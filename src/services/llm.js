@@ -86,16 +86,19 @@ async function callLLM(prompt, apiKey) {
   const isDev = import.meta.env.DEV;
   const url = isDev ? '/api/llm' : 'https://api.anthropic.com/v1/messages';
 
+  // Anthropic's API supports CORS for direct browser calls.
+  // Only x-api-key, anthropic-version, and content-type are in the allowed CORS headers.
   const headers = {
     'content-type': 'application/json',
+    'x-api-key': apiKey,
+    'anthropic-version': '2023-06-01',
   };
 
-  if (!isDev) {
-    // Direct browser call — Anthropic supports this for personal tools
-    headers['x-api-key'] = apiKey;
-    headers['anthropic-version'] = '2023-06-01';
-    // Required header for direct browser usage per Anthropic's policy
-    headers['anthropic-dangerous-request-header'] = 'allow-unsafe-browser-client';
+  // In dev the Vite proxy injects the key server-side, so remove it from the request headers
+  // (the proxy adds it back) to avoid sending it twice.
+  if (isDev) {
+    delete headers['x-api-key'];
+    delete headers['anthropic-version'];
   }
 
   const res = await fetch(url, {
