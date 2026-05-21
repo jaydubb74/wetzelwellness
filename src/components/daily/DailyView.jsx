@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { today, formatDisplay, offsetDate } from '../../utils/dates.js';
+import { useState, useEffect, useRef, useMemo } from 'react';
+import { getLocalDateKey, isToday, formatDisplay, offsetDate } from '../../utils/dates.js';
 import { useDailyLog } from '../../hooks/useDailyLog.js';
 import * as googleTasks from '../../services/googleTasks.js';
 import * as storage from '../../services/storage.js';
@@ -10,8 +10,64 @@ import ExerciseLogger from './ExerciseLogger.jsx';
 import TimeBlock, { BlockSection } from './TimeBlock.jsx';
 
 export default function DailyView({ settings }) {
-  const [selectedDate, setSelectedDate] = useState(today());
+  // Always initialize to the LOCAL calendar date, never UTC.
+  const [selectedDate, setSelectedDate] = useState(getLocalDateKey);
   const [syncStatus, setSyncStatus] = useState('');
+
+  // Track whether the user has intentionally navigated to a prior date.
+  // We use a ref so reconcile() reads the latest value without adding it as a
+  // useEffect dependency (which would recreate the listener on every nav click).
+  const browsingHistoryRef = useRef(false);
+
+  // ── Date reconciliation ──────────────────────────────────────────────────────
+  //
+  // Scenarios handled:
+  //   1. App open across midnight — interval ticks and advances selectedDate.
+  //   2. Phone/laptop woken from sleep — visibilitychange fires and advances.
+  //   3. New-day app open — useState(getLocalDateKey) already starts on today.
+  //   4. User viewing history — browsingHistoryRef prevents auto-advance.
+
+  useEffect(() => {
+    function reconcile() {
+      if (browsingHistoryRef.current) return; // user is intentionally in history
+      const todayKey = getLocalDateKey();
+      setSelectedDate(prev => (prev < todayKey ? todayKey : prev));
+    }
+
+    function onVisibilityChange() {
+      if (!document.hidden) reconcile();
+    }
+
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    // Poll every 60 s so midnight rollover is caught without a page refresh.
+    const timer = setInterval(reconcile, 60_000);
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      clearInterval(timer);
+    };
+  }, []); // intentionally empty — reconcile reads ref, not captured state
+
+  // ── Navigation helpers ───────────────────────────────────────────────────────
+
+  function goBack() {
+    browsingHistoryRef.current = true;
+    setSelectedDate(d => offsetDate(d, -1));
+  }
+
+  function goForward() {
+    const next = offsetDate(selectedDate, 1);
+    // Reaching today clears history mode
+    if (next >= getLocalDateKey()) browsingHistoryRef.current = false;
+    setSelectedDate(next);
+  }
+
+  function goToday() {
+    browsingHistoryRef.current = false;
+    setSelectedDate(getLocalDateKey());
+  }
+
+  // ── Log + derived data ───────────────────────────────────────────────────────
 
   const {
     log,
@@ -21,7 +77,8 @@ export default function DailyView({ settings }) {
     addExercise, removeExercise,
   } = useDailyLog(selectedDate);
 
-  const isToday = selectedDate === today();
+  const todayKey = getLocalDateKey();
+  const viewingToday = selectedDate === todayKey;
 
   // Supplements bucketed by timing
   const suppsByTiming = useMemo(() => {
@@ -34,18 +91,17 @@ export default function DailyView({ settings }) {
     };
   }, [settings.supplements]);
 
-  // Weekly exercise counts (for progress pills in ExerciseLogger)
+  // Weekly exercise counts — uses getLocalDateKey (not toISOString) for day keys
   const weekCounts = useMemo(() => {
     const allLogs = storage.getAllLogs();
     const counts = { zone2: 0, hiit: 0, strength: 0 };
-    // Current ISO week (Sun–Sat)
-    const now = new Date(selectedDate + 'T00:00:00');
-    const sunday = new Date(now);
-    sunday.setDate(now.getDate() - now.getDay());
+    const anchor = new Date(selectedDate + 'T00:00:00');
+    const sunday = new Date(anchor);
+    sunday.setDate(anchor.getDate() - anchor.getDay());
     for (let i = 0; i < 7; i++) {
       const d = new Date(sunday);
       d.setDate(sunday.getDate() + i);
-      const ds = d.toISOString().split('T')[0];
+      const ds = getLocalDateKey(d); // ← was toISOString().split('T')[0] — bug fixed
       const l = allLogs[ds];
       if (!l) continue;
       for (const ex of l.exercises || []) {
@@ -53,7 +109,7 @@ export default function DailyView({ settings }) {
       }
     }
     return counts;
-  }, [selectedDate, log]); // re-compute when log changes
+  }, [selectedDate, log]);
 
   async function handleSync() {
     setSyncStatus('syncing');
@@ -73,17 +129,12 @@ export default function DailyView({ settings }) {
     <div className="space-y-4">
       {/* Date navigator */}
       <div className="flex items-center justify-between">
-        <button
-          onClick={() => setSelectedDate(d => offsetDate(d, -1))}
-          className="btn-ghost"
-        >
-          ← Prev
-        </button>
+        <button onClick={goBack} className="btn-ghost">← Prev</button>
         <div className="text-center">
           <p className="font-semibold text-slate-900 text-sm">{formatDisplay(selectedDate)}</p>
-          {!isToday && (
+          {!viewingToday && (
             <button
-              onClick={() => setSelectedDate(today())}
+              onClick={goToday}
               className="text-xs text-brand-500 hover:text-brand-600 mt-0.5"
             >
               Back to today
@@ -91,8 +142,8 @@ export default function DailyView({ settings }) {
           )}
         </div>
         <button
-          onClick={() => setSelectedDate(d => offsetDate(d, 1))}
-          disabled={isToday}
+          onClick={goForward}
+          disabled={viewingToday}
           className="btn-ghost disabled:opacity-30"
         >
           Next →
