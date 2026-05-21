@@ -80,22 +80,20 @@ When adding a supplement, generate a unique id like "s<timestamp>", include: id,
 // ── Core API call ─────────────────────────────────────────────────────────────
 
 async function callLLM(prompt, apiKey) {
-  // In dev mode the Vite proxy at /api/llm forwards to https://api.anthropic.com/v1/messages
-  // and injects x-api-key + anthropic-version server-side.
-  // In production builds, fall back to direct call with the user's stored key.
+  // Always route through /api/llm:
+  //   - Dev:        Vite proxy forwards to Anthropic and injects the key server-side
+  //   - Production: Cloudflare Pages Function at functions/api/llm.js proxies the request,
+  //                 avoiding CORS restrictions on direct browser → Anthropic calls.
   const isDev = import.meta.env.DEV;
-  const url = isDev ? '/api/llm' : 'https://api.anthropic.com/v1/messages';
+  const url = '/api/llm';
 
-  // Anthropic's API supports CORS for direct browser calls.
-  // Only x-api-key, anthropic-version, and content-type are in the allowed CORS headers.
   const headers = {
     'content-type': 'application/json',
     'x-api-key': apiKey,
     'anthropic-version': '2023-06-01',
   };
 
-  // In dev the Vite proxy injects the key server-side, so remove it from the request headers
-  // (the proxy adds it back) to avoid sending it twice.
+  // In dev the Vite proxy injects the key server-side, so strip it from the browser request.
   if (isDev) {
     delete headers['x-api-key'];
     delete headers['anthropic-version'];
