@@ -2,6 +2,7 @@ const KEY = {
   LOGS: 'ww_daily_logs',
   SETTINGS: 'ww_settings',
   NUTRITION_CACHE: 'ww_nutrition_cache',
+  SAVED_MEALS: 'ww_saved_meals',
 };
 
 // ── Default settings ──────────────────────────────────────────────────────────
@@ -104,6 +105,44 @@ export function saveNutritionCache(cache) {
     Object.entries(cache).filter(([k]) => !(k in SEED_CACHE))
   );
   localStorage.setItem(KEY.NUTRITION_CACHE, JSON.stringify(toSave));
+}
+
+// ── Saved / favourite meals ───────────────────────────────────────────────────
+
+export function getSavedMeals() {
+  try {
+    return JSON.parse(localStorage.getItem(KEY.SAVED_MEALS) || '[]');
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Saves a meal to the favourites list.
+ * Silently skips exact-duplicate descriptions (case-insensitive).
+ * Returns the updated array.
+ */
+export function saveFavoriteMeal({ description, macros }) {
+  const meals = getSavedMeals();
+  const dupe = meals.some(
+    m => m.description.toLowerCase() === description.toLowerCase()
+  );
+  if (dupe) return meals;
+  const updated = [
+    { id: 'fav_' + Date.now(), description, macros },
+    ...meals,
+  ];
+  localStorage.setItem(KEY.SAVED_MEALS, JSON.stringify(updated));
+  return updated;
+}
+
+/**
+ * Removes a saved meal by id. Returns the updated array.
+ */
+export function removeFavoriteMeal(id) {
+  const updated = getSavedMeals().filter(m => m.id !== id);
+  localStorage.setItem(KEY.SAVED_MEALS, JSON.stringify(updated));
+  return updated;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

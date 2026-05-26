@@ -1,22 +1,27 @@
 import { useState } from 'react';
 
 const CATEGORIES = [
-  { id: 'zone2',    label: 'Zone 2 Cardio', color: 'text-sky-600 bg-sky-50',     icon: '🚴' },
-  { id: 'hiit',     label: 'HIIT',          color: 'text-rose-600 bg-rose-50',    icon: '⚡' },
-  { id: 'strength', label: 'Strength',      color: 'text-violet-600 bg-violet-50',icon: '🏋️' },
-  { id: 'other',    label: 'Other',         color: 'text-slate-600 bg-slate-100', icon: '🏃' },
+  { id: 'zone2',    label: 'Zone 2 Cardio', color: 'text-sky-600 bg-sky-50',      icon: '🚴' },
+  { id: 'hiit',     label: 'HIIT',          color: 'text-rose-600 bg-rose-50',     icon: '⚡' },
+  { id: 'strength', label: 'Strength',      color: 'text-violet-600 bg-violet-50', icon: '🏋️' },
+  { id: 'movement', label: 'Movement',      color: 'text-amber-600 bg-amber-50',   icon: '🔥' },
+  { id: 'other',    label: 'Other',         color: 'text-slate-600 bg-slate-100',  icon: '🏃' },
 ];
 
 function categoryMeta(id) {
-  return CATEGORIES.find(c => c.id === id) || CATEGORIES[3];
+  return CATEGORIES.find(c => c.id === id) || CATEGORIES[4];
 }
 
 export default function ExerciseLogger({ exercises, goals, onAdd, onRemove }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(false);           // full log-workout form
+  const [movementOpen, setMovementOpen] = useState(false); // movement-goal mini-form
   const [form, setForm] = useState({ category: 'strength', type: '', duration: '' });
+  const [activeCalories, setActiveCalories] = useState('');
 
   // Weekly counts (passed from DailyView which aggregates from useDailyLog)
   const weekCounts = exercises._weekCounts || {};
+
+  // ── Full workout form ──────────────────────────────────────────────────────
 
   function handleSubmit(e) {
     e.preventDefault();
@@ -30,9 +35,25 @@ export default function ExerciseLogger({ exercises, goals, onAdd, onRemove }) {
     setOpen(false);
   }
 
+  // ── Movement goal mini-form ────────────────────────────────────────────────
+
+  function handleMovementSubmit(e) {
+    e.preventDefault();
+    const cal = parseInt(activeCalories, 10);
+    if (!cal || cal < 1) return;
+    onAdd({
+      category: 'movement',
+      type: 'Daily Movement Goal',
+      duration: 0,
+      activeCalories: cal,
+    });
+    setActiveCalories('');
+    setMovementOpen(false);
+  }
+
   return (
     <div className="space-y-3">
-      {/* Today's sessions */}
+      {/* ── Today's sessions ────────────────────────────────────────────────── */}
       {exercises.filter(e => !e._weekCounts).map(ex => {
         const meta = categoryMeta(ex.category);
         return (
@@ -41,7 +62,11 @@ export default function ExerciseLogger({ exercises, goals, onAdd, onRemove }) {
               {meta.icon} {meta.label}
             </span>
             <span className="text-sm text-slate-700 flex-1">{ex.type}</span>
-            <span className="text-xs text-slate-400 shrink-0">{ex.duration} min</span>
+            <span className="text-xs text-slate-400 shrink-0">
+              {ex.category === 'movement'
+                ? `${ex.activeCalories ?? '–'} active cal`
+                : `${ex.duration} min`}
+            </span>
             <button
               onClick={() => onRemove(ex.id)}
               className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-400 transition-opacity p-1 rounded"
@@ -50,17 +75,18 @@ export default function ExerciseLogger({ exercises, goals, onAdd, onRemove }) {
         );
       })}
 
-      {/* Weekly progress pills */}
+      {/* ── Weekly progress pills (zone2 / hiit / strength only) ────────────── */}
       {goals && (
         <div className="flex flex-wrap gap-2 pt-1">
-          {CATEGORIES.filter(c => c.id !== 'other').map(cat => {
-            const goal = goals[cat.id];
-            if (!goal) return null;
-            const count = weekCounts[cat.id] || 0;
+          {['zone2', 'hiit', 'strength'].map(catId => {
+            const cat = CATEGORIES.find(c => c.id === catId);
+            const goal = goals[catId];
+            if (!goal || !cat) return null;
+            const count = weekCounts[catId] || 0;
             const met = count >= goal.target;
             return (
               <div
-                key={cat.id}
+                key={catId}
                 className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border
                   ${met ? 'bg-brand-50 border-brand-200 text-brand-700' : 'bg-white border-slate-200 text-slate-500'}`}
               >
@@ -74,19 +100,62 @@ export default function ExerciseLogger({ exercises, goals, onAdd, onRemove }) {
         </div>
       )}
 
-      {/* Add session */}
-      {!open ? (
-        <button
-          onClick={() => setOpen(true)}
-          className="btn-ghost text-xs"
+      {/* ── Action buttons ───────────────────────────────────────────────────── */}
+      {!open && !movementOpen && (
+        <div className="flex flex-wrap gap-2">
+          <button onClick={() => setOpen(true)} className="btn-ghost text-xs">
+            + Log a workout
+          </button>
+          <button
+            onClick={() => setMovementOpen(true)}
+            className="flex items-center gap-1.5 text-xs bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 px-3 py-1.5 rounded-lg font-medium transition-colors"
+          >
+            🔥 Hit Movement Goal
+          </button>
+        </div>
+      )}
+
+      {/* ── Movement goal mini-form ──────────────────────────────────────────── */}
+      {movementOpen && (
+        <form
+          onSubmit={handleMovementSubmit}
+          className="bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-2"
         >
-          + Log a workout
-        </button>
-      ) : (
+          <p className="text-xs font-semibold text-amber-800">🔥 Daily Movement Goal</p>
+          <div className="flex gap-2 items-center">
+            <input
+              className="input text-sm flex-1"
+              type="number"
+              placeholder="Active calories burned"
+              min="1"
+              max="5000"
+              value={activeCalories}
+              onChange={e => setActiveCalories(e.target.value)}
+              autoFocus
+            />
+            <span className="text-xs text-amber-700 shrink-0">active cal</span>
+          </div>
+          <div className="flex gap-2">
+            <button type="submit" className="btn-primary text-xs py-1.5 px-3">
+              Save
+            </button>
+            <button
+              type="button"
+              onClick={() => { setMovementOpen(false); setActiveCalories(''); }}
+              className="btn-secondary text-xs py-1.5 px-3"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
+
+      {/* ── Full workout form ────────────────────────────────────────────────── */}
+      {open && (
         <form onSubmit={handleSubmit} className="bg-slate-50 rounded-xl p-3 space-y-3">
-          {/* Category selector */}
+          {/* Category selector — exclude 'movement' from manual log */}
           <div className="flex flex-wrap gap-1.5">
-            {CATEGORIES.map(cat => (
+            {CATEGORIES.filter(c => c.id !== 'movement').map(cat => (
               <button
                 key={cat.id}
                 type="button"

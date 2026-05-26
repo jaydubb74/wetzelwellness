@@ -1,13 +1,18 @@
 import { useState } from 'react';
 import { parseMealMacros } from '../../services/llm.js';
+import * as storage from '../../services/storage.js';
 
 export default function MealLogger({ timeBlock, meals, onAdd, onRemove }) {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [pending, setPending] = useState(null); // { description, macros, breakdown }
   const [error, setError] = useState('');
+  const [savedMeals, setSavedMeals] = useState(() => storage.getSavedMeals());
+  const [justSaved, setJustSaved] = useState(false);
 
   const blockMeals = meals.filter(m => m.timeBlock === timeBlock);
+
+  // ── Analyze ─────────────────────────────────────────────────────────────────
 
   async function handleAnalyze() {
     const desc = input.trim();
@@ -25,6 +30,8 @@ export default function MealLogger({ timeBlock, meals, onAdd, onRemove }) {
     }
   }
 
+  // ── Confirm / discard analyzed result ───────────────────────────────────────
+
   function handleConfirm() {
     if (!pending) return;
     onAdd({ timeBlock, description: pending.description, macros: pending.macros });
@@ -38,6 +45,37 @@ export default function MealLogger({ timeBlock, meals, onAdd, onRemove }) {
     setInput('');
   }
 
+  // ── Save as favourite (+ add to log) ────────────────────────────────────────
+
+  function handleSaveAndAdd() {
+    if (!pending) return;
+    const updated = storage.saveFavoriteMeal({
+      description: pending.description,
+      macros: {
+        protein:  pending.macros.protein,
+        fat:      pending.macros.fat,
+        carbs:    pending.macros.carbs,
+        calories: pending.macros.calories,
+      },
+    });
+    setSavedMeals(updated);
+    setJustSaved(true);
+    setTimeout(() => setJustSaved(false), 1800);
+    handleConfirm();
+  }
+
+  // ── Quick-add from favourites ────────────────────────────────────────────────
+
+  function handleQuickAdd(fav) {
+    onAdd({ timeBlock, description: fav.description, macros: fav.macros });
+  }
+
+  function handleRemoveFavorite(id, e) {
+    e.stopPropagation();
+    const updated = storage.removeFavoriteMeal(id);
+    setSavedMeals(updated);
+  }
+
   function handleKeyDown(e) {
     if (e.key === 'Enter' && !loading) handleAnalyze();
     if (e.key === 'Escape') handleDiscard();
@@ -45,7 +83,34 @@ export default function MealLogger({ timeBlock, meals, onAdd, onRemove }) {
 
   return (
     <div className="space-y-2">
-      {/* Logged meals */}
+      {/* ── Favourite quick-picks ──────────────────────────────────────────── */}
+      {savedMeals.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 pb-0.5">
+          {savedMeals.map(fav => (
+            <button
+              key={fav.id}
+              onClick={() => handleQuickAdd(fav)}
+              title={`P:${fav.macros.protein}g · F:${fav.macros.fat}g · C:${fav.macros.carbs}g · ${fav.macros.calories} kcal`}
+              className="group/fav flex items-center gap-1 text-xs bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 px-2.5 py-1 rounded-full transition-colors"
+            >
+              <span>⭐</span>
+              <span className="max-w-[160px] truncate">
+                {fav.description}
+              </span>
+              <span
+                role="button"
+                onClick={e => handleRemoveFavorite(fav.id, e)}
+                className="ml-0.5 opacity-0 group-hover/fav:opacity-100 text-amber-400 hover:text-red-400 transition-opacity leading-none"
+                title="Remove favourite"
+              >
+                ×
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* ── Logged meals ───────────────────────────────────────────────────── */}
       {blockMeals.map(meal => (
         <div key={meal.id} className="flex items-start gap-2 group">
           <div className="flex-1 bg-slate-50 rounded-xl px-3 py-2">
@@ -67,7 +132,7 @@ export default function MealLogger({ timeBlock, meals, onAdd, onRemove }) {
         </div>
       ))}
 
-      {/* Pending confirmation card */}
+      {/* ── Pending confirmation card ──────────────────────────────────────── */}
       {pending && (
         <div className="bg-brand-50 border border-brand-200 rounded-xl p-3 space-y-2">
           <div className="flex justify-between items-start">
@@ -92,18 +157,24 @@ export default function MealLogger({ timeBlock, meals, onAdd, onRemove }) {
               Total: {pending.macros.protein}g P · {pending.macros.fat}g F · {pending.macros.carbs}g C · {pending.macros.calories} kcal
             </span>
           </div>
-          <div className="flex gap-2 pt-0.5">
+          <div className="flex flex-wrap gap-2 pt-0.5">
             <button onClick={handleConfirm} className="btn-primary text-xs py-1.5 px-3">
               Add to log
             </button>
-            <button onClick={handleDiscard} className="btn-secondary text-xs py-1.5 px-3">
+            <button
+              onClick={handleSaveAndAdd}
+              className="btn-secondary text-xs py-1.5 px-3 flex items-center gap-1"
+            >
+              {justSaved ? '✓ Saved!' : '⭐ Save & Add'}
+            </button>
+            <button onClick={handleDiscard} className="btn-ghost text-xs py-1.5 px-3">
               Discard
             </button>
           </div>
         </div>
       )}
 
-      {/* Input row */}
+      {/* ── Input row ──────────────────────────────────────────────────────── */}
       {!pending && (
         <div className="flex gap-2">
           <input
