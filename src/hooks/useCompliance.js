@@ -45,10 +45,9 @@ export function useCompliance(dates, settings) {
 
     const pct = (n) => tracked > 0 ? Math.round((n / tracked) * 100) : null;
 
-    // Exercise: count sessions this week by type
-    const weekDates = getWeekDates();
+    // Exercise: count sessions across the viewed dates
     const weeklyExercise = { zone2: 0, hiit: 0, strength: 0 };
-    for (const d of weekDates) {
+    for (const d of dates) {
       const log = logs[d];
       if (!log) continue;
       for (const ex of log.exercises || []) {

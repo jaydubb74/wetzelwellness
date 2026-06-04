@@ -395,11 +395,11 @@ export default function ProgressionView({ settings, onNavigateToDate }) {
         </div>
       )}
 
-      {/* Weekly exercise progress */}
+      {/* Exercise progress for viewed period */}
       <div className="card">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-slate-800">This Week's Exercise</h3>
-          <span className="text-xs text-slate-400">{weekLabel(today())}</span>
+          <h3 className="text-sm font-semibold text-slate-800">{period === 'week' ? "This Week's Exercise" : "Month Exercise"}</h3>
+          <span className="text-xs text-slate-400">{periodLabel}</span>
         </div>
         <ExerciseProgress goals={settings.exerciseGoals} weekCounts={weeklyExercise} />
       </div>
