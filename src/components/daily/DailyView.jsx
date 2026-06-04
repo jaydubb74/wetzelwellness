@@ -113,7 +113,8 @@ export default function DailyView({ settings, jumpDate, onJumpConsumed }) {
       const l = allLogs[ds];
       if (!l) continue;
       for (const ex of l.exercises || []) {
-        if (ex.category in counts) counts[ex.category]++;
+        const cat = ex.category === 'movement' ? 'hiit' : ex.category;
+        if (cat in counts) counts[cat]++;
       }
     }
     return counts;

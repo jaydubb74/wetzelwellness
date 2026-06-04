@@ -45,13 +45,15 @@ export function useCompliance(dates, settings) {
 
     const pct = (n) => tracked > 0 ? Math.round((n / tracked) * 100) : null;
 
-    // Exercise: count sessions across the viewed dates
+    // Exercise: count sessions across the viewed dates.
+    // 'movement' category (Hit Movement Goal button) counts toward 'hiit' goal.
     const weeklyExercise = { zone2: 0, hiit: 0, strength: 0 };
     for (const d of dates) {
       const log = logs[d];
       if (!log) continue;
       for (const ex of log.exercises || []) {
-        if (ex.category in weeklyExercise) weeklyExercise[ex.category]++;
+        const cat = ex.category === 'movement' ? 'hiit' : ex.category;
+        if (cat in weeklyExercise) weeklyExercise[cat]++;
       }
     }
 
@@ -94,7 +96,8 @@ function computeExerciseCompliance(dates, logs, settings) {
       if (!log) continue;
       hasAnyLog = true;
       for (const ex of log.exercises || []) {
-        if (ex.category in counts) counts[ex.category]++;
+        const cat = ex.category === 'movement' ? 'hiit' : ex.category;
+        if (cat in counts) counts[cat]++;
       }
     }
 
