@@ -18,8 +18,8 @@ export default function ExerciseLogger({ exercises, goals, onAdd, onRemove }) {
   const [form, setForm] = useState({ category: 'strength', type: '', duration: '' });
   const [activeCalories, setActiveCalories] = useState('');
 
-  // Weekly counts (passed from DailyView which aggregates from useDailyLog)
-  const weekCounts = exercises._weekCounts || {};
+  // Weekly counts sentinel is the last element in the array (appended by DailyView)
+  const weekCounts = exercises.find(e => e._weekCounts)?._weekCounts || {};
 
   // ── Full workout form ──────────────────────────────────────────────────────
 

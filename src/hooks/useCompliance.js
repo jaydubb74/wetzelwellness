@@ -1,6 +1,5 @@
 import { useMemo } from 'react';
 import * as storage from '../services/storage.js';
-import { getWeekDates } from '../utils/dates.js';
 
 /**
  * Returns compliance metrics for the given array of date strings.
@@ -77,39 +76,26 @@ export function useCompliance(dates, settings) {
 function computeExerciseCompliance(dates, logs, settings) {
   if (!dates.length) return null;
 
-  // Group dates into ISO weeks
-  const weeks = {};
+  const goals = settings.exerciseGoals || {};
+  const goalKeys = Object.keys(goals);
+  if (!goalKeys.length) return null;
+
+  const counts = goalKeys.reduce((acc, k) => ({ ...acc, [k]: 0 }), {});
+  let hasAnyLog = false;
+
   for (const d of dates) {
-    const wk = getWeekDates(d)[0]; // Sunday anchor
-    if (!weeks[wk]) weeks[wk] = [];
-    weeks[wk].push(d);
-  }
-
-  let weeksTracked = 0, weeksMet = 0;
-
-  for (const [, wkDates] of Object.entries(weeks)) {
-    const counts = { zone2: 0, hiit: 0, strength: 0 };
-    let hasAnyLog = false;
-
-    for (const d of wkDates) {
-      const log = logs[d];
-      if (!log) continue;
-      hasAnyLog = true;
-      for (const ex of log.exercises || []) {
-        const cat = ex.category === 'movement' ? 'hiit' : ex.category;
-        if (cat in counts) counts[cat]++;
-      }
+    const log = logs[d];
+    if (!log) continue;
+    hasAnyLog = true;
+    for (const ex of log.exercises || []) {
+      const cat = ex.category === 'movement' ? 'hiit' : ex.category;
+      if (cat in counts) counts[cat]++;
     }
-
-    if (!hasAnyLog) continue;
-    weeksTracked++;
-
-    const goals = settings.exerciseGoals;
-    const allMet = Object.entries(goals).every(([cat, g]) =>
-      counts[cat] >= g.target
-    );
-    if (allMet) weeksMet++;
   }
 
-  return weeksTracked > 0 ? Math.round((weeksMet / weeksTracked) * 100) : null;
+  if (!hasAnyLog) return null;
+
+  // Average per-goal achievement so a single missed goal doesn't zero the whole score
+  const scores = goalKeys.map(k => Math.min(counts[k] / goals[k].target, 1));
+  return Math.round(scores.reduce((a, b) => a + b, 0) / scores.length * 100);
 }
