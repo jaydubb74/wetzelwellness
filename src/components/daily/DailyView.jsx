@@ -9,7 +9,7 @@ import SupplementChecklist from './SupplementChecklist.jsx';
 import ExerciseLogger from './ExerciseLogger.jsx';
 import TimeBlock, { BlockSection } from './TimeBlock.jsx';
 
-export default function DailyView({ settings }) {
+export default function DailyView({ settings, jumpDate, onJumpConsumed }) {
   // Always initialize to the LOCAL calendar date, never UTC.
   const [selectedDate, setSelectedDate] = useState(getLocalDateKey);
   const [syncStatus, setSyncStatus] = useState('');
@@ -47,6 +47,14 @@ export default function DailyView({ settings }) {
       clearInterval(timer);
     };
   }, []); // intentionally empty — reconcile reads ref, not captured state
+
+  // Jump to a date requested from another view (e.g. heatmap click)
+  useEffect(() => {
+    if (!jumpDate) return;
+    browsingHistoryRef.current = jumpDate !== getLocalDateKey();
+    setSelectedDate(jumpDate);
+    onJumpConsumed?.();
+  }, [jumpDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Navigation helpers ───────────────────────────────────────────────────────
 

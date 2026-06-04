@@ -8,7 +8,13 @@ import { today, formatFull } from './utils/dates.js';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('daily');
+  const [jumpDate, setJumpDate] = useState(null);
   const { settings, update: updateSettings, replace: replaceSettings } = useSettings();
+
+  function navigateToDate(date) {
+    setJumpDate(date);
+    setActiveTab('daily');
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
@@ -30,10 +36,10 @@ export default function App() {
       {/* ── Content ─────────────────────────────────────────────────────── */}
       <main className="flex-1 max-w-2xl w-full mx-auto px-4 pb-16 pt-5">
         {activeTab === 'daily' && (
-          <DailyView settings={settings} />
+          <DailyView settings={settings} jumpDate={jumpDate} onJumpConsumed={() => setJumpDate(null)} />
         )}
         {activeTab === 'progression' && (
-          <ProgressionView settings={settings} />
+          <ProgressionView settings={settings} onNavigateToDate={navigateToDate} />
         )}
         {activeTab === 'settings' && (
           <SettingsView

@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { today, getWeekDates, getPastDays, getMonthDates, offsetDate, weekLabel, monthLabel, dayOfWeekInitial, formatShort } from '../../utils/dates.js';
+import { today, getWeekDates, getPastDays, getMonthDates, offsetDate, weekLabel, monthLabel, dayOfWeekInitial, formatShort, formatFull } from '../../utils/dates.js';
 import { useCompliance } from '../../hooks/useCompliance.js';
 import * as storage from '../../services/storage.js';
 
@@ -42,7 +42,7 @@ function DotLegend() {
   );
 }
 
-function CalendarGrid({ dates, daily, onSelect, selectedDate }) {
+function CalendarGrid({ dates, daily, onSelect, selectedDate, onNavigateToDate }) {
   const tod = today();
 
   return (
@@ -74,12 +74,15 @@ function CalendarGrid({ dates, daily, onSelect, selectedDate }) {
           cells.push(
             <button
               key={date}
-              onClick={() => onSelect(date)}
+              onClick={() => {
+                onSelect(date);
+                if (onNavigateToDate) onNavigateToDate(date);
+              }}
               className={`
                 flex flex-col items-center gap-0.5 py-1.5 rounded-xl transition-colors
                 ${isSelected ? 'bg-brand-50 ring-1 ring-brand-300' : 'hover:bg-slate-50'}
               `}
-              title={date}
+              title={`Open ${date} in Daily view`}
             >
               <span className={`text-[11px] font-medium ${isToday ? 'text-brand-600' : 'text-slate-600'}`}>
                 {new Date(date + 'T00:00:00').getDate()}
@@ -141,7 +144,127 @@ function ExerciseProgress({ goals, weekCounts }) {
   );
 }
 
-export default function ProgressionView({ settings }) {
+function downloadWeekReport(anchor, settings) {
+  const dates = getWeekDates(anchor);
+  const logs = storage.getAllLogs();
+  const activeSupps = (settings.supplements || []).filter(s => s.active);
+  const label = weekLabel(anchor);
+
+  const lines = [
+    `# Wetzel Wellness — Weekly Report`,
+    `## ${label}`,
+    `Generated: ${formatFull(today())}`,
+    ``,
+  ];
+
+  // Weekly overview
+  let nutritionMet = 0, suppsMet = 0, hydrationMet = 0, tracked = 0;
+  const exerciseCounts = { zone2: 0, hiit: 0, strength: 0 };
+
+  for (const date of dates) {
+    const log = logs[date];
+    if (!log) continue;
+    tracked++;
+    const protein = (log.meals || []).reduce((s, m) => s + (m.macros?.protein || 0), 0);
+    const nutritionScore = settings.macroTargets.protein > 0 ? protein / settings.macroTargets.protein : 0;
+    const checkedCount = activeSupps.filter(s => log.supplements?.[s.id]).length;
+    const suppScore = activeSupps.length > 0 ? checkedCount / activeSupps.length : 1;
+    const hydrationScore = settings.waterTarget > 0 ? Math.min((log.water || 0) / settings.waterTarget, 1) : 1;
+    if (nutritionScore >= 0.8) nutritionMet++;
+    if (suppScore >= 0.8) suppsMet++;
+    if (hydrationScore >= 0.8) hydrationMet++;
+    for (const ex of log.exercises || []) {
+      if (ex.category in exerciseCounts) exerciseCounts[ex.category]++;
+    }
+  }
+
+  const pct = (n) => tracked > 0 ? `${Math.round((n / tracked) * 100)}%` : 'N/A';
+  const goals = settings.exerciseGoals;
+
+  lines.push(`## Weekly Overview (${tracked}/7 days logged)`);
+  lines.push(`- Nutrition compliance: ${pct(nutritionMet)} (protein ≥80% target)`);
+  lines.push(`- Supplement compliance: ${pct(suppsMet)}`);
+  lines.push(`- Hydration compliance: ${pct(hydrationMet)} (≥${settings.waterTarget} glasses)`);
+  lines.push(`- Zone 2 Cardio: ${exerciseCounts.zone2}/${goals.zone2?.target ?? 3} sessions`);
+  lines.push(`- HIIT: ${exerciseCounts.hiit}/${goals.hiit?.target ?? 3} sessions`);
+  lines.push(`- Strength Training: ${exerciseCounts.strength}/${goals.strength?.target ?? 3} sessions`);
+  lines.push(``);
+  lines.push(`---`);
+  lines.push(``);
+
+  // Day-by-day
+  lines.push(`## Day-by-Day Breakdown`);
+  lines.push(``);
+
+  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+  for (const date of dates) {
+    const d = new Date(date + 'T00:00:00');
+    const dayName = dayNames[d.getDay()];
+    lines.push(`### ${dayName}, ${formatShort(date)}`);
+
+    const log = logs[date];
+    if (!log) {
+      lines.push(`_No log recorded_`);
+      lines.push(``);
+      continue;
+    }
+
+    // Nutrition
+    const meals = log.meals || [];
+    const totals = meals.reduce((acc, m) => ({
+      protein: acc.protein + (m.macros?.protein || 0),
+      fat: acc.fat + (m.macros?.fat || 0),
+      carbs: acc.carbs + (m.macros?.carbs || 0),
+      calories: acc.calories + (m.macros?.calories || 0),
+    }), { protein: 0, fat: 0, carbs: 0, calories: 0 });
+
+    const proteinPct = settings.macroTargets.protein > 0
+      ? Math.round((totals.protein / settings.macroTargets.protein) * 100)
+      : 0;
+    lines.push(`**Nutrition:** ${proteinPct}% protein target`);
+    lines.push(`- Protein: ${Math.round(totals.protein)}g / ${settings.macroTargets.protein}g`);
+    lines.push(`- Fat: ${Math.round(totals.fat)}g / ${settings.macroTargets.fat}g`);
+    lines.push(`- Carbs: ${Math.round(totals.carbs)}g / ${settings.macroTargets.carbs}g`);
+    lines.push(`- Calories: ${Math.round(totals.calories)} / ${settings.macroTargets.calories}`);
+    if (meals.length > 0) {
+      lines.push(`- Meals logged: ${meals.map(m => m.description).join(', ')}`);
+    }
+
+    // Supplements
+    const checkedCount = activeSupps.filter(s => log.supplements?.[s.id]).length;
+    const suppPct = activeSupps.length > 0 ? Math.round((checkedCount / activeSupps.length) * 100) : 100;
+    const checkedNames = activeSupps.filter(s => log.supplements?.[s.id]).map(s => s.name);
+    const missedNames = activeSupps.filter(s => !log.supplements?.[s.id]).map(s => s.name);
+    lines.push(`**Supplements:** ${suppPct}% (${checkedCount}/${activeSupps.length})`);
+    if (missedNames.length > 0) lines.push(`- Missed: ${missedNames.join(', ')}`);
+
+    // Hydration
+    const water = log.water || 0;
+    const waterPct = settings.waterTarget > 0 ? Math.round((water / settings.waterTarget) * 100) : 100;
+    lines.push(`**Hydration:** ${waterPct}% — ${water}/${settings.waterTarget} glasses${log.electrolytes ? ' + electrolytes ✓' : ''}`);
+
+    // Exercise
+    const exercises = (log.exercises || []).filter(e => !e._weekCounts);
+    if (exercises.length > 0) {
+      lines.push(`**Exercise:** ${exercises.map(e => `${e.label || e.category}${e.duration ? ` (${e.duration} min)` : ''}`).join(', ')}`);
+    } else {
+      lines.push(`**Exercise:** Rest day`);
+    }
+
+    lines.push(``);
+  }
+
+  const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `wellness-week-${dates[0]}.txt`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+export default function ProgressionView({ settings, onNavigateToDate }) {
   const [period, setPeriod] = useState('week'); // 'week' | 'month'
   const [anchor, setAnchor] = useState(today());
   const [selectedDate, setSelectedDate] = useState(today());
@@ -228,13 +351,25 @@ export default function ProgressionView({ settings }) {
         <div className="card">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-slate-800">Daily Heatmap</h3>
-            <DotLegend />
+            <div className="flex items-center gap-2">
+              {period === 'week' && (
+                <button
+                  onClick={() => downloadWeekReport(anchor, settings)}
+                  className="text-xs text-brand-600 hover:text-brand-700 font-medium flex items-center gap-1"
+                  title="Download week summary as text file"
+                >
+                  ↓ Week Report
+                </button>
+              )}
+              <DotLegend />
+            </div>
           </div>
           <CalendarGrid
             dates={dates}
             daily={daily}
             onSelect={setSelectedDate}
             selectedDate={selectedDate}
+            onNavigateToDate={onNavigateToDate}
           />
 
           {/* Selected day detail */}
