@@ -1,16 +1,31 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { parseMealMacros } from '../../services/llm.js';
 import * as storage from '../../services/storage.js';
 
 export default function MealLogger({ timeBlock, meals, onAdd, onRemove }) {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [pending, setPending] = useState(null); // { description, macros, breakdown }
+  const [pending, setPending] = useState(null);
   const [error, setError] = useState('');
   const [savedMeals, setSavedMeals] = useState(() => storage.getSavedMeals());
   const [justSaved, setJustSaved] = useState(false);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const wrapperRef = useRef(null);
 
   const blockMeals = meals.filter(m => m.timeBlock === timeBlock);
+
+  const filteredMeals = savedMeals.filter(m =>
+    !input.trim() || m.description.toLowerCase().includes(input.trim().toLowerCase())
+  );
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handleClick(e) {
+      if (!wrapperRef.current?.contains(e.target)) setDropdownOpen(false);
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
 
   // ── Analyze ─────────────────────────────────────────────────────────────────
 
@@ -20,6 +35,7 @@ export default function MealLogger({ timeBlock, meals, onAdd, onRemove }) {
     setError('');
     setLoading(true);
     setPending(null);
+    setDropdownOpen(false);
     try {
       const result = await parseMealMacros(desc);
       setPending({ description: desc, macros: result, breakdown: result.breakdown || [] });
@@ -64,10 +80,12 @@ export default function MealLogger({ timeBlock, meals, onAdd, onRemove }) {
     handleConfirm();
   }
 
-  // ── Quick-add from favourites ────────────────────────────────────────────────
+  // ── Quick-add from saved meals ───────────────────────────────────────────────
 
   function handleQuickAdd(fav) {
     onAdd({ timeBlock, description: fav.description, macros: fav.macros });
+    setInput('');
+    setDropdownOpen(false);
   }
 
   function handleRemoveFavorite(id, e) {
@@ -78,38 +96,11 @@ export default function MealLogger({ timeBlock, meals, onAdd, onRemove }) {
 
   function handleKeyDown(e) {
     if (e.key === 'Enter' && !loading) handleAnalyze();
-    if (e.key === 'Escape') handleDiscard();
+    if (e.key === 'Escape') { setDropdownOpen(false); handleDiscard(); }
   }
 
   return (
     <div className="space-y-2">
-      {/* ── Favourite quick-picks ──────────────────────────────────────────── */}
-      {savedMeals.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 pb-0.5">
-          {savedMeals.map(fav => (
-            <button
-              key={fav.id}
-              onClick={() => handleQuickAdd(fav)}
-              title={`P:${fav.macros.protein}g · F:${fav.macros.fat}g · C:${fav.macros.carbs}g · ${fav.macros.calories} kcal`}
-              className="group/fav flex items-center gap-1 text-xs bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 px-2.5 py-1 rounded-full transition-colors"
-            >
-              <span>⭐</span>
-              <span className="max-w-[160px] truncate">
-                {fav.description}
-              </span>
-              <span
-                role="button"
-                onClick={e => handleRemoveFavorite(fav.id, e)}
-                className="ml-0.5 opacity-0 group-hover/fav:opacity-100 text-amber-400 hover:text-red-400 transition-opacity leading-none"
-                title="Remove favourite"
-              >
-                ×
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
-
       {/* ── Logged meals ───────────────────────────────────────────────────── */}
       {blockMeals.map(meal => (
         <div key={meal.id} className="flex items-start gap-2 group">
@@ -174,28 +165,75 @@ export default function MealLogger({ timeBlock, meals, onAdd, onRemove }) {
         </div>
       )}
 
-      {/* ── Input row ──────────────────────────────────────────────────────── */}
+      {/* ── Input row with saved-meals dropdown ─────────────────────────────── */}
       {!pending && (
-        <div className="flex gap-2">
-          <input
-            className="input text-sm"
-            placeholder="Describe a meal or food (press Enter)"
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            disabled={loading}
-          />
-          <button
-            onClick={handleAnalyze}
-            disabled={loading || !input.trim()}
-            className="btn-primary shrink-0 text-xs px-3"
-          >
-            {loading ? (
-              <span className="inline-block w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-            ) : (
-              'Analyze'
-            )}
-          </button>
+        <div ref={wrapperRef} className="relative">
+          <div className="flex gap-2">
+            <input
+              className="input text-sm"
+              placeholder={savedMeals.length > 0 ? 'Select a saved meal or type a new one…' : 'Describe a meal or food (press Enter)'}
+              value={input}
+              onChange={e => { setInput(e.target.value); setDropdownOpen(true); }}
+              onFocus={() => { if (savedMeals.length > 0) setDropdownOpen(true); }}
+              onKeyDown={handleKeyDown}
+              disabled={loading}
+            />
+            <button
+              onClick={handleAnalyze}
+              disabled={loading || !input.trim()}
+              className="btn-primary shrink-0 text-xs px-3"
+            >
+              {loading ? (
+                <span className="inline-block w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+              ) : 'Analyze'}
+            </button>
+          </div>
+
+          {/* Saved meals dropdown table */}
+          {dropdownOpen && filteredMeals.length > 0 && (
+            <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden">
+              <div className="overflow-y-auto max-h-52">
+                <table className="w-full text-xs border-collapse">
+                  <thead className="sticky top-0 bg-slate-50 border-b border-slate-100">
+                    <tr>
+                      <th className="text-left px-3 py-2 text-slate-500 font-medium">Meal</th>
+                      <th className="text-right px-2 py-2 text-slate-500 font-medium">P</th>
+                      <th className="text-right px-2 py-2 text-slate-500 font-medium">F</th>
+                      <th className="text-right px-2 py-2 text-slate-500 font-medium">C</th>
+                      <th className="text-right px-2 py-2 text-slate-500 font-medium">kcal</th>
+                      <th className="w-6" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredMeals.map((fav, i) => (
+                      <tr
+                        key={fav.id}
+                        className={`cursor-pointer hover:bg-amber-50 transition-colors ${i < filteredMeals.length - 1 ? 'border-b border-slate-50' : ''}`}
+                        onClick={() => handleQuickAdd(fav)}
+                      >
+                        <td className="px-3 py-2 text-slate-800 font-medium">
+                          <span className="block max-w-[180px] truncate">{fav.description}</span>
+                        </td>
+                        <td className="px-2 py-2 text-right text-slate-500 tabular-nums">{fav.macros.protein}g</td>
+                        <td className="px-2 py-2 text-right text-slate-500 tabular-nums">{fav.macros.fat}g</td>
+                        <td className="px-2 py-2 text-right text-slate-500 tabular-nums">{fav.macros.carbs}g</td>
+                        <td className="px-2 py-2 text-right text-slate-500 tabular-nums">{fav.macros.calories}</td>
+                        <td className="px-2 py-2">
+                          <button
+                            onClick={e => handleRemoveFavorite(fav.id, e)}
+                            className="text-slate-300 hover:text-red-400 transition-colors leading-none"
+                            title="Remove"
+                          >
+                            ×
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
