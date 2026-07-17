@@ -7,7 +7,31 @@ import {
   getWeekDates,
   getMonthDates,
   getPastDays,
+  offsetMonth,
 } from '../dates.js';
+
+describe('offsetMonth', () => {
+  it('steps forward one month from mid-month to the 1st', () => {
+    expect(offsetMonth('2026-07-15', 1)).toBe('2026-08-01');
+  });
+
+  it('steps backward one month', () => {
+    expect(offsetMonth('2026-07-15', -1)).toBe('2026-06-01');
+  });
+
+  it('never repeats a month when stepping from the 1st', () => {
+    expect(offsetMonth('2026-07-01', 1)).toBe('2026-08-01');
+  });
+
+  it('handles end-of-month anchors without drift (Jan 31 → Feb)', () => {
+    expect(offsetMonth('2026-01-31', 1)).toBe('2026-02-01');
+  });
+
+  it('crosses year boundaries', () => {
+    expect(offsetMonth('2026-12-10', 1)).toBe('2027-01-01');
+    expect(offsetMonth('2026-01-10', -1)).toBe('2025-12-01');
+  });
+});
 
 // ── getLocalDateKey ────────────────────────────────────────────────────────────
 

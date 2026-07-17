@@ -73,6 +73,20 @@ export function offsetDate(dateStr, days) {
 }
 
 /**
+ * Returns the first day of the month `months` before/after the month containing
+ * `dateStr`. Anchoring to day 1 avoids end-of-month drift (e.g. Jan 31 + 1
+ * month must land in February, and stepping must never repeat a month).
+ *
+ * @param {string} dateStr  YYYY-MM-DD
+ * @param {number} months   positive = future, negative = past
+ * @returns {string}
+ */
+export function offsetMonth(dateStr, months) {
+  const d = new Date(dateStr + 'T00:00:00');
+  return getLocalDateKey(new Date(d.getFullYear(), d.getMonth() + months, 1));
+}
+
+/**
  * Returns the 7 YYYY-MM-DD keys for the Sun-Sat week containing `anchorDate`.
  * @param {string} [anchorDate]
  * @returns {string[]}

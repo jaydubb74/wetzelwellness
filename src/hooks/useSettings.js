@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import * as storage from '../services/storage.js';
+const { deepMerge } = storage;
 
 export function useSettings() {
   const [settings, setSettings] = useState(() => storage.getSettings());
@@ -18,22 +19,4 @@ export function useSettings() {
   }, []);
 
   return { settings, update, replace };
-}
-
-function deepMerge(base, patch) {
-  const result = { ...base };
-  for (const key of Object.keys(patch)) {
-    if (
-      patch[key] !== null &&
-      typeof patch[key] === 'object' &&
-      !Array.isArray(patch[key]) &&
-      typeof base[key] === 'object' &&
-      !Array.isArray(base[key])
-    ) {
-      result[key] = deepMerge(base[key] || {}, patch[key]);
-    } else {
-      result[key] = patch[key];
-    }
-  }
-  return result;
 }

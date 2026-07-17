@@ -15,18 +15,32 @@ export async function parseMealMacros(description) {
     return { ...cache[key], fromCache: true };
   }
 
-  const settings = storage.getSettings();
-  if (!settings.apiKey) {
-    throw new Error('No API key configured. Add your Anthropic API key in the Settings tab.');
-  }
-
-  const result = await callLLM(buildMealPrompt(description), settings.apiKey);
+  const result = validateMacros(await callLLM(buildMealPrompt(description)));
 
   // Persist to cache
   const updated = { ...cache, [key]: result };
   storage.saveNutritionCache(updated);
 
   return { ...result, fromCache: false };
+}
+
+// Reject malformed LLM output before it reaches the log or the cache
+function validateMacros(raw) {
+  const toInt = (v) => {
+    const n = Math.round(Number(v));
+    return Number.isFinite(n) && n >= 0 ? n : null;
+  };
+  const result = {
+    protein:  toInt(raw.protein),
+    fat:      toInt(raw.fat),
+    carbs:    toInt(raw.carbs),
+    calories: toInt(raw.calories),
+  };
+  if (Object.values(result).some(v => v === null)) {
+    throw new Error('The AI returned invalid macro values. Please try again.');
+  }
+  if (Array.isArray(raw.breakdown)) result.breakdown = raw.breakdown;
+  return result;
 }
 
 function buildMealPrompt(description) {
@@ -51,15 +65,13 @@ Use realistic portion estimates. Protein, fat, carbs, and calories must be posit
 // ── Settings AI assistant ─────────────────────────────────────────────────────
 
 export async function applySettingsIntent(userMessage, currentSettings) {
-  const settings = storage.getSettings();
-  if (!settings.apiKey) {
-    throw new Error('No API key configured. Add your Anthropic API key in the Settings tab.');
-  }
+  // Never send credentials (or let the model edit them) — strip from both sides
+  const { apiKey, ouraToken, syncKey, ...safeSettings } = currentSettings;
 
   const prompt = `You are a configuration assistant for a personal wellness tracker. Apply the user's requested change to their settings.
 
 CURRENT SETTINGS (JSON):
-${JSON.stringify(currentSettings, null, 2)}
+${JSON.stringify(safeSettings, null, 2)}
 
 USER REQUEST: "${userMessage}"
 
@@ -73,33 +85,35 @@ Examples:
 
 When adding a supplement, generate a unique id like "s<timestamp>", include: id, name, timing ("morning-empty"|"with-food-morning"|"afternoon"|"nighttime"), active: true.`;
 
-  const patch = await callLLM(prompt, settings.apiKey);
+  const patch = await callLLM(prompt);
+  delete patch.apiKey;
+  delete patch.ouraToken;
+  delete patch.syncKey;
   return patch;
 }
 
 // ── Core API call ─────────────────────────────────────────────────────────────
 
-async function callLLM(prompt, apiKey) {
+async function callLLM(prompt) {
   // Always route through /api/llm:
   //   - Dev:        Vite proxy forwards to Anthropic and injects the key server-side
   //   - Production: Cloudflare Pages Function at functions/api/llm.js proxies the request,
   //                 avoiding CORS restrictions on direct browser → Anthropic calls.
   const isDev = import.meta.env.DEV;
-  const url = '/api/llm';
+  const headers = { 'content-type': 'application/json' };
 
-  const headers = {
-    'content-type': 'application/json',
-    'x-api-key': apiKey,
-    'anthropic-version': '2023-06-01',
-  };
-
-  // In dev the Vite proxy injects the key server-side, so strip it from the browser request.
-  if (isDev) {
-    delete headers['x-api-key'];
-    delete headers['anthropic-version'];
+  // In dev the Vite proxy injects the key server-side; in production the
+  // browser supplies the user's own key from Settings.
+  if (!isDev) {
+    const { apiKey } = storage.getSettings();
+    if (!apiKey) {
+      throw new Error('No API key configured. Add your Anthropic API key in the Settings tab.');
+    }
+    headers['x-api-key'] = apiKey;
+    headers['anthropic-version'] = '2023-06-01';
   }
 
-  const res = await fetch(url, {
+  const res = await fetch('/api/llm', {
     method: 'POST',
     headers,
     body: JSON.stringify({

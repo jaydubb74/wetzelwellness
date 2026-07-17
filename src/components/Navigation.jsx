@@ -6,7 +6,7 @@ const TABS = [
 
 export default function Navigation({ activeTab, onTabChange }) {
   return (
-    <nav className="bg-white border-b border-slate-100 sticky top-[53px] z-10">
+    <nav className="bg-white border-b border-slate-100">
       <div className="max-w-2xl mx-auto px-4 flex gap-1">
         {TABS.map(tab => {
           const active = tab.id === activeTab;

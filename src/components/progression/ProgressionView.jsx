@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { today, getWeekDates, getPastDays, getMonthDates, offsetDate, weekLabel, monthLabel, dayOfWeekInitial, formatShort, formatFull } from '../../utils/dates.js';
+import { today, getWeekDates, getMonthDates, offsetDate, offsetMonth, weekLabel, monthLabel, formatShort, formatFull } from '../../utils/dates.js';
 import { useCompliance } from '../../hooks/useCompliance.js';
 import * as storage from '../../services/storage.js';
 
@@ -245,9 +245,9 @@ function downloadWeekReport(anchor, settings) {
     lines.push(`**Hydration:** ${waterPct}% — ${water}/${settings.waterTarget} glasses${log.electrolytes ? ' + electrolytes ✓' : ''}`);
 
     // Exercise
-    const exercises = (log.exercises || []).filter(e => !e._weekCounts);
+    const exercises = log.exercises || [];
     if (exercises.length > 0) {
-      lines.push(`**Exercise:** ${exercises.map(e => `${e.label || e.category}${e.duration ? ` (${e.duration} min)` : ''}`).join(', ')}`);
+      lines.push(`**Exercise:** ${exercises.map(e => `${e.type || e.category}${e.duration ? ` (${e.duration} min)` : ''}`).join(', ')}`);
     } else {
       lines.push(`**Exercise:** Rest day`);
     }
@@ -278,11 +278,10 @@ export default function ProgressionView({ settings, onNavigateToDate }) {
   const periodLabel = period === 'week' ? weekLabel(anchor) : monthLabel(anchor);
 
   function prev() {
-    setAnchor(a => offsetDate(a, period === 'week' ? -7 : -28));
+    setAnchor(a => period === 'week' ? offsetDate(a, -7) : offsetMonth(a, -1));
   }
   function next() {
-    setAnchor(a => offsetDate(a, period === 'week' ? 7 : 28));
-    if (anchor === today()) return;
+    setAnchor(a => period === 'week' ? offsetDate(a, 7) : offsetMonth(a, 1));
   }
 
   return (

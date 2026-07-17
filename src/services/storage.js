@@ -24,7 +24,19 @@ const DEFAULT_SETTINGS = {
   },
   waterTarget: 8,
   apiKey: '',
+  ouraToken: '',        // legacy Personal Access Token (deprecated by Oura)
+  ouraClientId: '',
+  ouraClientSecret: '',
+  ouraAuth: null,       // { accessToken, refreshToken, expiresAt } from OAuth
+  syncKey: '',
 };
+
+// Cross-device sync hooks — registered by services/sync.js so saves get
+// mirrored to KV without a circular import.
+let syncNotifier = null;
+export function setSyncNotifier(notifier) {
+  syncNotifier = notifier;
+}
 
 // Seed cache so common items work without an LLM call
 const SEED_CACHE = {
@@ -60,8 +72,9 @@ export function getDailyLog(date) {
 
 export function saveDailyLog(date, log) {
   const all = getAllLogs();
-  all[date] = log;
+  all[date] = { ...log, updatedAt: log.updatedAt ?? Date.now() };
   localStorage.setItem(KEY.LOGS, JSON.stringify(all));
+  syncNotifier?.onLog?.(date);
 }
 
 export function getAllLogs() {
@@ -84,7 +97,8 @@ export function getSettings() {
 }
 
 export function saveSettings(settings) {
-  localStorage.setItem(KEY.SETTINGS, JSON.stringify(settings));
+  localStorage.setItem(KEY.SETTINGS, JSON.stringify({ ...settings, updatedAt: settings.updatedAt ?? Date.now() }));
+  syncNotifier?.onSettings?.();
 }
 
 // ── Nutrition cache ───────────────────────────────────────────────────────────
@@ -147,7 +161,7 @@ export function removeFavoriteMeal(id) {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function deepMerge(defaults, overrides) {
+export function deepMerge(defaults, overrides) {
   const result = { ...defaults };
   for (const key of Object.keys(overrides)) {
     if (

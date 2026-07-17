@@ -1,18 +1,19 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { getLocalDateKey, isToday, formatDisplay, offsetDate } from '../../utils/dates.js';
 import { useDailyLog } from '../../hooks/useDailyLog.js';
-import * as googleTasks from '../../services/googleTasks.js';
 import * as storage from '../../services/storage.js';
 import MacroSummary from './MacroSummary.jsx';
 import MealLogger from './MealLogger.jsx';
 import SupplementChecklist from './SupplementChecklist.jsx';
 import ExerciseLogger from './ExerciseLogger.jsx';
+import HealthActivity from './HealthActivity.jsx';
 import TimeBlock, { BlockSection } from './TimeBlock.jsx';
+import { useOura } from '../../hooks/useOura.js';
+import { workoutLabel } from '../../services/oura.js';
 
 export default function DailyView({ settings, jumpDate, onJumpConsumed }) {
   // Always initialize to the LOCAL calendar date, never UTC.
   const [selectedDate, setSelectedDate] = useState(getLocalDateKey);
-  const [syncStatus, setSyncStatus] = useState('');
 
   // Track whether the user has intentionally navigated to a prior date.
   // We use a ref so reconcile() reads the latest value without adding it as a
@@ -78,12 +79,26 @@ export default function DailyView({ settings, jumpDate, onJumpConsumed }) {
   // ── Log + derived data ───────────────────────────────────────────────────────
 
   const {
-    log,
+    log, update,
     addMeal, removeMeal,
     toggleSupplement,
     setWater, setElectrolytes,
     addExercise, removeExercise,
   } = useDailyLog(selectedDate);
+
+  // Oura data for the selected day (auto-fetches into log.oura)
+  const { oura, syncing: ouraSyncing, error: ouraError, refresh: refreshOura } = useOura(selectedDate, log, update);
+
+  // Oura-detected workouts shown alongside manual entries (not stored in exercises[])
+  const ouraExercises = useMemo(() =>
+    (oura?.workouts || []).map(w => ({
+      id: 'oura_' + w.id,
+      category: w.category,
+      type: workoutLabel(w.activity),
+      duration: w.minutes,
+      activeCalories: w.calories,
+      source: 'oura',
+    })), [oura]);
 
   const todayKey = getLocalDateKey();
   const viewingToday = selectedDate === todayKey;
@@ -116,23 +131,13 @@ export default function DailyView({ settings, jumpDate, onJumpConsumed }) {
         const cat = ex.category === 'movement' ? 'hiit' : ex.category;
         if (cat in counts) counts[cat]++;
       }
+      // Oura-detected workouts count toward weekly goals too
+      for (const w of l.oura?.workouts || []) {
+        if (w.category in counts) counts[w.category]++;
+      }
     }
     return counts;
   }, [selectedDate, log]);
-
-  async function handleSync() {
-    setSyncStatus('syncing');
-    try {
-      await googleTasks.pushDailySummary(selectedDate, log, settings);
-      setSyncStatus('done');
-    } catch (e) {
-      setSyncStatus('error:' + e.message);
-    }
-    setTimeout(() => setSyncStatus(''), 3000);
-  }
-
-  // Inject week counts into exercises array as a sentinel so ExerciseLogger can read it
-  const exercisesWithMeta = [...(log.exercises || []), { _weekCounts: weekCounts }];
 
   return (
     <div className="space-y-4">
@@ -259,35 +264,22 @@ export default function DailyView({ settings, jumpDate, onJumpConsumed }) {
         )}
       </TimeBlock>
 
-      {/* ── Exercise ─────────────────────────────────────────────────────── */}
-      <div className="card">
-        <h3 className="text-sm font-semibold text-slate-800 mb-3">🏋️ Exercise & Movement</h3>
+      {/* ── Daily Health + Activity ──────────────────────────────────────── */}
+      <div className="card space-y-4">
+        <h3 className="text-sm font-semibold text-slate-800">🩺 Daily Health + Activity</h3>
+        <HealthActivity
+          oura={oura}
+          syncing={ouraSyncing}
+          error={ouraError}
+          onRefresh={refreshOura}
+        />
         <ExerciseLogger
-          exercises={exercisesWithMeta}
+          exercises={[...ouraExercises, ...(log.exercises || [])]}
+          weekCounts={weekCounts}
           goals={settings.exerciseGoals}
           onAdd={addExercise}
           onRemove={removeExercise}
         />
-      </div>
-
-      {/* ── Google Tasks sync ─────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between pt-1 pb-2">
-        <div className="text-xs text-slate-400">
-          {syncStatus.startsWith('error') && (
-            <span className="text-red-500">{syncStatus.replace('error:', '')}</span>
-          )}
-          {syncStatus === 'done' && <span className="text-brand-500">✓ Pushed to Google Tasks</span>}
-        </div>
-        <button
-          onClick={handleSync}
-          disabled={syncStatus === 'syncing'}
-          className="btn-secondary text-xs gap-1.5"
-          title={googleTasks.isConfigured() ? 'Push today\'s log to Google Tasks' : 'Google Tasks not configured — see .env.example'}
-        >
-          {syncStatus === 'syncing' ? (
-            <span className="inline-block w-3 h-3 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin" />
-          ) : '📅'} Push to Google Tasks
-        </button>
       </div>
     </div>
   );

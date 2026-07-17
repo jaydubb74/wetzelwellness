@@ -115,7 +115,7 @@ export default function MealLogger({ timeBlock, meals, onAdd, onRemove }) {
           </div>
           <button
             onClick={() => onRemove(meal.id)}
-            className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-400 transition-opacity p-1 rounded-lg"
+            className="text-slate-300 hover:text-red-400 transition-colors p-2 -m-1 rounded-lg min-w-[36px] min-h-[36px]"
             title="Remove"
           >
             ✕
@@ -221,7 +221,7 @@ export default function MealLogger({ timeBlock, meals, onAdd, onRemove }) {
                         <td className="px-2 py-2">
                           <button
                             onClick={e => handleRemoveFavorite(fav.id, e)}
-                            className="text-slate-300 hover:text-red-400 transition-colors leading-none"
+                            className="text-slate-300 hover:text-red-400 transition-colors leading-none p-2 -m-2"
                             title="Remove"
                           >
                             ×

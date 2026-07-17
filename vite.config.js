@@ -8,7 +8,7 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react()],
     server: {
-      port: 5173,
+      port: Number(process.env.PORT) || 5173,
       proxy: {
         // Proxies /api/llm -> https://api.anthropic.com/v1/messages
         // Injects the API key server-side so it never appears in browser network logs.
@@ -25,6 +25,16 @@ export default defineConfig(({ mode }) => {
               proxyReq.removeHeader('origin');
             });
           },
+        },
+        // In dev there is no Pages Functions runtime, so /api/sync and
+        // /api/oura are proxied to the deployed Cloudflare Pages site.
+        '/api/sync': {
+          target: 'https://wetzelwellness.pages.dev',
+          changeOrigin: true,
+        },
+        '/api/oura': {
+          target: 'https://wetzelwellness.pages.dev',
+          changeOrigin: true,
         },
       },
     },

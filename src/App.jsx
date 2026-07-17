@@ -18,23 +18,33 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
-      {/* ── Header ──────────────────────────────────────────────────────── */}
-      <header className="bg-white border-b border-slate-100 px-5 py-3 flex items-center justify-between sticky top-0 z-20">
-        <div className="flex items-center gap-2.5">
-          <span className="text-lg">🌿</span>
-          <span className="font-semibold text-slate-900 text-base tracking-tight">Wetzel Wellness</span>
-        </div>
-        <span className="text-xs text-slate-400 hidden sm:block">
-          {formatFull(today())}
-        </span>
-        <div className="w-[120px]" /> {/* spacer to center title on mobile */}
-      </header>
-
-      {/* ── Tab bar ─────────────────────────────────────────────────────── */}
-      <Navigation activeTab={activeTab} onTabChange={setActiveTab} />
+      {/* ── Sticky header + tab bar (one container, no magic offsets) ───── */}
+      <div
+        className="sticky top-0 z-20 bg-white"
+        style={{ paddingTop: 'env(safe-area-inset-top)' }}
+      >
+        <header className="border-b border-slate-100 px-5 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <span className="text-lg">🌿</span>
+            <span className="font-semibold text-slate-900 text-base tracking-tight">Wetzel Wellness</span>
+          </div>
+          <span className="text-xs text-slate-400 hidden sm:block">
+            {formatFull(today())}
+          </span>
+          <div className="w-[120px] hidden sm:block" /> {/* spacer to center date on desktop */}
+        </header>
+        <Navigation activeTab={activeTab} onTabChange={setActiveTab} />
+      </div>
 
       {/* ── Content ─────────────────────────────────────────────────────── */}
-      <main className="flex-1 max-w-2xl w-full mx-auto px-4 pb-16 pt-5">
+      <main
+        className="flex-1 max-w-2xl w-full mx-auto px-4 pb-16 pt-5"
+        style={{
+          paddingLeft: 'max(1rem, env(safe-area-inset-left))',
+          paddingRight: 'max(1rem, env(safe-area-inset-right))',
+          paddingBottom: 'max(4rem, env(safe-area-inset-bottom))',
+        }}
+      >
         {activeTab === 'daily' && (
           <DailyView settings={settings} jumpDate={jumpDate} onJumpConsumed={() => setJumpDate(null)} />
         )}

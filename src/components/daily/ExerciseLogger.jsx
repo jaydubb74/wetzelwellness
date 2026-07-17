@@ -12,14 +12,11 @@ function categoryMeta(id) {
   return CATEGORIES.find(c => c.id === id) || CATEGORIES[4];
 }
 
-export default function ExerciseLogger({ exercises, goals, onAdd, onRemove }) {
+export default function ExerciseLogger({ exercises, weekCounts = {}, goals, onAdd, onRemove }) {
   const [open, setOpen] = useState(false);           // full log-workout form
   const [movementOpen, setMovementOpen] = useState(false); // movement-goal mini-form
   const [form, setForm] = useState({ category: 'strength', type: '', duration: '' });
   const [activeCalories, setActiveCalories] = useState('');
-
-  // Weekly counts sentinel is the last element in the array (appended by DailyView)
-  const weekCounts = exercises.find(e => e._weekCounts)?._weekCounts || {};
 
   // ── Full workout form ──────────────────────────────────────────────────────
 
@@ -54,23 +51,32 @@ export default function ExerciseLogger({ exercises, goals, onAdd, onRemove }) {
   return (
     <div className="space-y-3">
       {/* ── Today's sessions ────────────────────────────────────────────────── */}
-      {exercises.filter(e => !e._weekCounts).map(ex => {
+      {exercises.map(ex => {
         const meta = categoryMeta(ex.category);
+        const fromOura = ex.source === 'oura';
         return (
           <div key={ex.id} className="flex items-center gap-2 group">
             <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full ${meta.color}`}>
               {meta.icon} {meta.label}
             </span>
+            {fromOura && (
+              <span className="text-[10px] font-medium text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-full shrink-0" title="Imported from Oura">
+                💍
+              </span>
+            )}
             <span className="text-sm text-slate-700 flex-1">{ex.type}</span>
             <span className="text-xs text-slate-400 shrink-0">
-              {ex.category === 'movement'
+              {ex.category === 'movement' && !fromOura
                 ? `${ex.activeCalories ?? '–'} active cal`
-                : `${ex.duration} min`}
+                : [ex.duration ? `${ex.duration} min` : null, fromOura && ex.activeCalories ? `${ex.activeCalories} cal` : null]
+                    .filter(Boolean).join(' · ') || '–'}
             </span>
-            <button
-              onClick={() => onRemove(ex.id)}
-              className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-400 transition-opacity p-1 rounded"
-            >✕</button>
+            {!fromOura && (
+              <button
+                onClick={() => onRemove(ex.id)}
+                className="text-slate-300 hover:text-red-400 transition-colors p-2 -m-1 rounded min-w-[36px] min-h-[36px]"
+              >✕</button>
+            )}
           </div>
         );
       })}

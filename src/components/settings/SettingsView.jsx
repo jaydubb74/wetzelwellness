@@ -1,5 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { applySettingsIntent } from '../../services/llm.js';
+import * as sync from '../../services/sync.js';
+import * as oura from '../../services/oura.js';
 
 const TIMING_OPTIONS = [
   { value: 'morning-empty',     label: 'Morning · Empty Stomach' },
@@ -267,6 +269,130 @@ function AIAssistant({ settings, onApply }) {
   );
 }
 
+// ── Sync & Oura ───────────────────────────────────────────────────────────────
+
+function SyncSettings({ settings, onUpdate, markSaved }) {
+  const [syncStatus, setSyncStatus] = useState(sync.getStatus());
+  const [ouraTest, setOuraTest] = useState(null); // null | 'testing' | 'ok' | error string
+
+  useEffect(() => sync.onStatusChange(setSyncStatus), []);
+
+  async function handleSyncNow() {
+    const result = await sync.syncNow();
+    if (result.pulled) window.location.reload(); // re-init views from merged data
+  }
+
+  async function handleTestOura() {
+    setOuraTest('testing');
+    try {
+      await oura.testOuraConnection();
+      setOuraTest('ok');
+    } catch (e) {
+      setOuraTest(e.message);
+    }
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="space-y-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="label">Oura Client ID</label>
+            <input
+              className="input text-sm font-mono"
+              placeholder="From your Oura application"
+              value={settings.ouraClientId || ''}
+              onChange={e => { onUpdate({ ouraClientId: e.target.value.trim() }); markSaved(); setOuraTest(null); }}
+            />
+          </div>
+          <div>
+            <label className="label">Oura Client Secret</label>
+            <input
+              type="password"
+              className="input text-sm font-mono"
+              placeholder="Client secret"
+              value={settings.ouraClientSecret || ''}
+              onChange={e => { onUpdate({ ouraClientSecret: e.target.value.trim() }); markSaved(); setOuraTest(null); }}
+            />
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => oura.beginOuraAuth()}
+            disabled={!settings.ouraClientId || !settings.ouraClientSecret}
+            className="btn-primary text-xs px-3"
+          >
+            {oura.isConnected() ? '🔄 Reconnect Oura' : '💍 Connect Oura'}
+          </button>
+          {oura.isConnected() && (
+            <>
+              <button
+                onClick={handleTestOura}
+                disabled={ouraTest === 'testing'}
+                className="btn-secondary text-xs px-3"
+              >
+                {ouraTest === 'testing' ? 'Testing…' : 'Test'}
+              </button>
+              <button
+                onClick={() => { oura.disconnectOura(); markSaved(); setOuraTest(null); }}
+                className="btn-ghost text-xs px-3"
+              >
+                Disconnect
+              </button>
+            </>
+          )}
+          {oura.isConnected() && ouraTest === null && (
+            <span className="text-xs text-brand-600">✓ Connected</span>
+          )}
+          {ouraTest === 'ok' && <span className="text-xs text-brand-600">✓ Oura responded — all good</span>}
+          {ouraTest && ouraTest !== 'ok' && ouraTest !== 'testing' && (
+            <span className="text-xs text-red-500">{ouraTest}</span>
+          )}
+        </div>
+        <p className="text-xs text-slate-400">
+          Pulls daily sleep, activity, and workouts. Create an application at{' '}
+          <a href="https://cloud.ouraring.com/oauth/applications" target="_blank" rel="noreferrer" className="text-brand-500 hover:underline">
+            cloud.ouraring.com
+          </a>{' '}
+          with this site's URL as the redirect URI, then paste its Client ID and Secret here
+          and hit Connect — you'll approve access on Oura's page and land back here.
+        </p>
+      </div>
+
+      <div>
+        <label className="label">Device Sync Key</label>
+        <div className="flex gap-2">
+          <input
+            type="password"
+            className="input text-sm font-mono flex-1"
+            placeholder="Shared passphrase for cross-device sync"
+            value={settings.syncKey || ''}
+            onChange={e => { onUpdate({ syncKey: e.target.value.trim() }); markSaved(); }}
+          />
+          <button
+            onClick={handleSyncNow}
+            disabled={!settings.syncKey || syncStatus.state === 'syncing'}
+            className="btn-secondary text-xs px-3 shrink-0"
+          >
+            {syncStatus.state === 'syncing' ? 'Syncing…' : 'Sync now'}
+          </button>
+        </div>
+        <p className="text-xs mt-1.5">
+          {syncStatus.state === 'error' && <span className="text-red-500">{syncStatus.error}</span>}
+          {syncStatus.state !== 'error' && syncStatus.lastSyncedAt && (
+            <span className="text-slate-400">Last synced {new Date(syncStatus.lastSyncedAt).toLocaleTimeString()}</span>
+          )}
+          {syncStatus.state !== 'error' && !syncStatus.lastSyncedAt && (
+            <span className="text-slate-400">
+              Enter the same key on each device to share one dataset. Must match the SYNC_KEY secret on Cloudflare.
+            </span>
+          )}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Settings View ────────────────────────────────────────────────────────
 
 export default function SettingsView({ settings, onUpdate, onReplace }) {
@@ -307,6 +433,11 @@ export default function SettingsView({ settings, onUpdate, onReplace }) {
             Stored in your browser's localStorage only.
           </p>
         </div>
+      </Section>
+
+      {/* Oura + device sync */}
+      <Section title="💍 Oura & Device Sync">
+        <SyncSettings settings={settings} onUpdate={onUpdate} markSaved={markSaved} />
       </Section>
 
       {/* Macro Targets */}

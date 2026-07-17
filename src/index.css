@@ -10,6 +10,9 @@
 
   body {
     @apply bg-slate-50 text-slate-900 font-sans;
+    /* Keep the rubber-band bounce from revealing a void behind the sticky header */
+    overscroll-behavior-y: none;
+    -webkit-tap-highlight-color: transparent;
   }
 
   *:focus-visible {
@@ -61,6 +64,14 @@
            checked:bg-brand-500 checked:border-brand-500
            focus:ring-brand-400 focus:ring-offset-0
            transition duration-150 cursor-pointer;
+  }
+}
+
+/* iOS Safari zooms the page when a focused input's font is under 16px.
+   Force 16px on touch-sized screens regardless of text-sm utilities. */
+@media (max-width: 640px) {
+  input, select, textarea {
+    font-size: 1rem !important;
   }
 }
 
