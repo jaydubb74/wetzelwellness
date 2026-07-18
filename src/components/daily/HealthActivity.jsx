@@ -65,6 +65,8 @@ export default function HealthActivity({ oura, syncing, error, onRefresh }) {
               <Stat label="Resting HR" value={sleep.restingHeartRate != null ? `${sleep.restingHeartRate} bpm` : '–'} />
               <Stat label="HRV" value={sleep.averageHrv != null ? `${Math.round(sleep.averageHrv)} ms` : '–'} />
             </div>
+          ) : oura?.errors?.sleep ? (
+            <p className="text-xs text-red-500">{oura.errors.sleep}</p>
           ) : (
             <p className="text-xs text-slate-400">No sleep data yet</p>
           )}
@@ -82,6 +84,8 @@ export default function HealthActivity({ oura, syncing, error, onRefresh }) {
               <Stat label="Active Cal" value={activity.activeCalories?.toLocaleString() ?? '–'} />
               <Stat label="Total Cal" value={activity.totalCalories?.toLocaleString() ?? '–'} />
             </div>
+          ) : oura?.errors?.activity ? (
+            <p className="text-xs text-red-500">{oura.errors.activity}</p>
           ) : (
             <p className="text-xs text-slate-400">No activity data yet</p>
           )}

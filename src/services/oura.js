@@ -149,9 +149,14 @@ export async function testOuraConnection() {
 /**
  * Fetches sleep, activity, and workouts for one date and returns the
  * summary object stored as `log.oura`.
+ *
+ * Each endpoint is fetched independently (Promise.allSettled) so that one
+ * failing call — e.g. a transient 500, or a scope Oura rejects — doesn't
+ * blank out the others. Per-endpoint failures are surfaced in `errors`
+ * instead of being swallowed into an indistinguishable "no data yet".
  */
 export async function fetchOuraDay(date) {
-  const [dailySleep, sleepSessions, dailyActivity, workouts] = await Promise.all([
+  const [dailySleepRes, sleepSessionsRes, dailyActivityRes, workoutsRes] = await Promise.allSettled([
     ouraGet('daily_sleep', date),
     // Oura's `sleep` endpoint dates a period by its bedtime_start's calendar
     // day, one day before the wake-day `daily_sleep` score it belongs to —
@@ -160,6 +165,16 @@ export async function fetchOuraDay(date) {
     ouraGet('daily_activity', date),
     ouraGet('workout', date),
   ]);
+
+  const dailySleep = dailySleepRes.status === 'fulfilled' ? dailySleepRes.value : [];
+  const sleepSessions = sleepSessionsRes.status === 'fulfilled' ? sleepSessionsRes.value : [];
+  const dailyActivity = dailyActivityRes.status === 'fulfilled' ? dailyActivityRes.value : [];
+  const workouts = workoutsRes.status === 'fulfilled' ? workoutsRes.value : [];
+
+  const errors = {};
+  if (dailySleepRes.status === 'rejected') errors.sleep = dailySleepRes.reason.message;
+  if (dailyActivityRes.status === 'rejected') errors.activity = dailyActivityRes.reason.message;
+  if (workoutsRes.status === 'rejected') errors.workouts = workoutsRes.reason.message;
 
   // Longest long_sleep session in the window is the one the daily score covers.
   const mainSleep = sleepSessions
@@ -201,6 +216,7 @@ export async function fetchOuraDay(date) {
       start: w.start_datetime ?? null,
     })),
     fetchedAt: Date.now(),
+    errors: Object.keys(errors).length ? errors : undefined,
   };
 }
 
