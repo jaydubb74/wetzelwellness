@@ -7,6 +7,7 @@
  * re-fetch, today re-fetches when stale.
  */
 import * as storage from './storage.js';
+import { offsetDate } from '../utils/dates.js';
 
 export const TODAY_REFRESH_MS = 30 * 60 * 1000;
 
@@ -130,9 +131,9 @@ async function getAccessToken() {
   return refreshPromise;
 }
 
-async function ouraGet(endpoint, date) {
+async function ouraGet(endpoint, startDate, endDate = startDate) {
   const token = await getAccessToken();
-  const params = new URLSearchParams({ endpoint, start_date: date, end_date: date });
+  const params = new URLSearchParams({ endpoint, start_date: startDate, end_date: endDate });
   const res = await fetch(`/api/oura?${params}`, { headers: { 'x-oura-token': token } });
   if (res.status === 401) throw new Error('Oura rejected the token — reconnect in Settings');
   if (!res.ok) throw new Error(`Oura request failed (${res.status})`);
@@ -152,14 +153,17 @@ export async function testOuraConnection() {
 export async function fetchOuraDay(date) {
   const [dailySleep, sleepSessions, dailyActivity, workouts] = await Promise.all([
     ouraGet('daily_sleep', date),
-    ouraGet('sleep', date),
+    // Oura's `sleep` endpoint dates a period by its bedtime_start's calendar
+    // day, one day before the wake-day `daily_sleep` score it belongs to —
+    // so a same-day query alone can miss last night's session entirely.
+    ouraGet('sleep', offsetDate(date, -1), date),
     ouraGet('daily_activity', date),
     ouraGet('workout', date),
   ]);
 
-  // Longest sleep session of the day carries the stage/HR detail.
+  // Longest long_sleep session in the window is the one the daily score covers.
   const mainSleep = sleepSessions
-    .slice()
+    .filter(s => s.type === 'long_sleep')
     .sort((a, b) => (b.total_sleep_duration || 0) - (a.total_sleep_duration || 0))[0];
 
   const sleep = (dailySleep[0] || mainSleep)

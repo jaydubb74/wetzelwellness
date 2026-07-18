@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import * as storage from '../services/storage.js';
 
-function emptyLog(date) {
+export function emptyLog(date) {
   return {
     date,
     meals: [],
