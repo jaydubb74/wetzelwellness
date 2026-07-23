@@ -1,0 +1,8 @@
+{
+  "name": "wetzelwellness",
+  "compatibility_date": "2026-07-23",
+  "pages_build_output_dir": "dist",
+  "kv_namespaces": [
+    { "binding": "WW_KV", "id": "6380149466a1444c8de3c26288645a48" }
+  ]
+}
