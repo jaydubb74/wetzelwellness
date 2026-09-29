@@ -8,7 +8,7 @@ const KEY = {
 // ── Default settings ──────────────────────────────────────────────────────────
 
 const DEFAULT_SETTINGS = {
-  macroTargets: { protein: 180, fat: 75, carbs: 200, calories: 2200 },
+  macroTargets: { protein: 185, fat: 80, carbs: 255, calories: 2500 },
   supplements: [
     { id: 's1', name: 'Vitamin D3',         timing: 'morning-empty',      active: true  },
     { id: 's2', name: 'Omega-3 Fish Oil',   timing: 'with-food-morning',  active: true  },
@@ -90,6 +90,12 @@ export function getAllLogs() {
 export function getSettings() {
   try {
     const saved = JSON.parse(localStorage.getItem(KEY.SETTINGS) || '{}');
+    // Saved settings still holding the previous defaults pick up the new ones;
+    // customized targets are left alone.
+    const t = saved.macroTargets;
+    if (t && t.protein === 180 && t.fat === 75 && t.carbs === 200 && t.calories === 2200) {
+      saved.macroTargets = { ...DEFAULT_SETTINGS.macroTargets };
+    }
     return deepMerge(DEFAULT_SETTINGS, saved);
   } catch {
     return { ...DEFAULT_SETTINGS };
