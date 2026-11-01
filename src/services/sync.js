@@ -187,7 +187,11 @@ export async function flush() {
 /** Manual "Sync now": push anything pending, then pull. */
 export async function syncNow() {
   await flush();
-  return pullAll();
+  const result = await pullAll();
+  // pullAll may have queued local-only items (older days, saved meals) for upload;
+  // push them now instead of waiting on the debounce so "synced" really means synced.
+  await flush();
+  return result;
 }
 
 // Mirror every local save to KV (debounced).
