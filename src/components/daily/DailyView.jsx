@@ -264,21 +264,21 @@ export default function DailyView({ settings, jumpDate, onJumpConsumed }) {
         )}
       </TimeBlock>
 
-      {/* ── Daily Health + Activity ──────────────────────────────────────── */}
+      {/* ── Daily Health + Movement ──────────────────────────────────────── */}
       <div className="card space-y-4">
-        <h3 className="text-sm font-semibold text-slate-800">🩺 Daily Health + Activity</h3>
+        <h3 className="text-sm font-semibold text-slate-800">🩺 Daily Health + Movement</h3>
         <HealthActivity
           oura={oura}
           syncing={ouraSyncing}
           error={ouraError}
           onRefresh={refreshOura}
+          exercises={[...ouraExercises, ...(log.exercises || [])]}
+          onRemoveExercise={removeExercise}
         />
         <ExerciseLogger
-          exercises={[...ouraExercises, ...(log.exercises || [])]}
           weekCounts={weekCounts}
           goals={settings.exerciseGoals}
           onAdd={addExercise}
-          onRemove={removeExercise}
         />
       </div>
     </div>

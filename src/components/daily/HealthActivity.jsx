@@ -1,4 +1,5 @@
 import * as ouraService from '../../services/oura.js';
+import { ExerciseList } from './ExerciseLogger.jsx';
 
 function hm(seconds) {
   if (seconds == null) return '–';
@@ -29,19 +30,64 @@ function Stat({ label, value }) {
   );
 }
 
+function MovementCard({ exercises, activity, ouraError, onRemove }) {
+  const goalEntries = exercises.filter(ex => ex.category === 'movement');
+  const activities = exercises.filter(ex => ex.category !== 'movement');
+  const goalCal = goalEntries.reduce((sum, ex) => sum + (ex.activeCalories || 0), 0);
+
+  return (
+    <div className="bg-amber-50/60 border border-amber-100 rounded-xl p-3 space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold text-amber-900">🔥 Movement</p>
+        <ScoreBadge score={activity?.score} />
+      </div>
+
+      {/* Movement goal achievement */}
+      {goalEntries.length > 0 ? (
+        <div className="flex items-center justify-between gap-2 bg-brand-50 border border-brand-200 rounded-lg px-2.5 py-1.5">
+          <span className="text-xs font-semibold text-brand-700">✓ Movement goal hit</span>
+          <span className="text-xs text-brand-700 tabular-nums">{goalCal.toLocaleString()} active cal</span>
+        </div>
+      ) : (
+        <p className="text-xs text-slate-400">Movement goal not hit yet</p>
+      )}
+
+      {/* Oura activity stats, when available */}
+      {activity && (
+        <div className="grid grid-cols-3 gap-2">
+          <Stat label="Steps" value={activity.steps?.toLocaleString() ?? '–'} />
+          <Stat label="Active Cal" value={activity.activeCalories?.toLocaleString() ?? '–'} />
+          <Stat label="Total Cal" value={activity.totalCalories?.toLocaleString() ?? '–'} />
+        </div>
+      )}
+
+      {/* Logged workouts / activities */}
+      {activities.length > 0 ? (
+        <ExerciseList exercises={activities} onRemove={onRemove} />
+      ) : (
+        <p className="text-xs text-slate-400">No activities logged yet</p>
+      )}
+
+      {!activity && ouraError && <p className="text-xs text-red-500">{ouraError}</p>}
+    </div>
+  );
+}
+
 /**
- * Oura summary cards for one day: sleep + activity.
- * Renders nothing when there's no data and no token configured.
+ * Daily health cards for one day: Oura sleep + movement (goal, logged activities).
  */
-export default function HealthActivity({ oura, syncing, error, onRefresh }) {
+export default function HealthActivity({ oura, syncing, error, onRefresh, exercises = [], onRemoveExercise }) {
   const configured = ouraService.isConnected();
 
   if (!configured && !oura) {
     return (
-      <p className="text-xs text-slate-400 bg-slate-50 rounded-xl px-3 py-2.5">
-        💍 Connect your Oura ring in <span className="font-medium">Settings</span> to
-        auto-fill sleep, activity, and workouts.
-      </p>
+      <div className="space-y-3">
+        <p className="text-xs text-slate-400 bg-slate-50 rounded-xl px-3 py-2.5">
+          💍 Connect your Oura ring in <span className="font-medium">Settings</span> to
+          auto-fill sleep, activity, and workouts.
+        </p>
+        <MovementCard exercises={exercises} onRemove={onRemoveExercise} />
+      </div>
     );
   }
 
@@ -72,24 +118,13 @@ export default function HealthActivity({ oura, syncing, error, onRefresh }) {
           )}
         </div>
 
-        {/* Activity */}
-        <div className="bg-amber-50/60 border border-amber-100 rounded-xl p-3 space-y-2">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold text-amber-900">🔥 Activity</p>
-            <ScoreBadge score={activity?.score} />
-          </div>
-          {activity ? (
-            <div className="grid grid-cols-3 gap-2">
-              <Stat label="Steps" value={activity.steps?.toLocaleString() ?? '–'} />
-              <Stat label="Active Cal" value={activity.activeCalories?.toLocaleString() ?? '–'} />
-              <Stat label="Total Cal" value={activity.totalCalories?.toLocaleString() ?? '–'} />
-            </div>
-          ) : oura?.errors?.activity ? (
-            <p className="text-xs text-red-500">{oura.errors.activity}</p>
-          ) : (
-            <p className="text-xs text-slate-400">No activity data yet</p>
-          )}
-        </div>
+        {/* Movement */}
+        <MovementCard
+          exercises={exercises}
+          activity={activity}
+          ouraError={oura?.errors?.activity}
+          onRemove={onRemoveExercise}
+        />
       </div>
 
       <div className="flex items-center gap-2">
