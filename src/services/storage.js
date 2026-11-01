@@ -4,6 +4,7 @@ const KEY = {
   NUTRITION_CACHE: 'ww_nutrition_cache',
   SAVED_MEALS: 'ww_saved_meals',
   SAVED_MEALS_DELETED: 'ww_saved_meals_deleted',
+  SYNC_JOINED: 'ww_sync_joined_key',
 };
 
 // ── Default settings ──────────────────────────────────────────────────────────
@@ -31,6 +32,13 @@ const DEFAULT_SETTINGS = {
   ouraAuth: null,       // { accessToken, refreshToken, expiresAt } from OAuth
   syncKey: '',
 };
+
+// Per-device secrets. When a device adopts the shared settings it keeps its
+// own value for any of these the shared copy is missing.
+export const CREDENTIAL_KEYS = ['apiKey', 'ouraToken', 'ouraClientId', 'ouraClientSecret', 'ouraAuth'];
+
+// The user's actual tracking preferences — update when adding a new one.
+const PREFERENCE_KEYS = ['macroTargets', 'supplements', 'exerciseGoals', 'waterTarget'];
 
 // Cross-device sync hooks — registered by services/sync.js so saves get
 // mirrored to KV without a circular import.
@@ -71,9 +79,12 @@ export function getDailyLog(date) {
   return all[date] || null;
 }
 
-export function saveDailyLog(date, log) {
+// Local saves always get a fresh timestamp. (Reusing log.updatedAt froze it
+// once a log had been reloaded from storage, so the sync server rejected every
+// later edit as stale.) Only sync passes `updatedAt`, when applying remote data.
+export function saveDailyLog(date, log, { updatedAt = Date.now() } = {}) {
   const all = getAllLogs();
-  all[date] = { ...log, updatedAt: log.updatedAt ?? Date.now() };
+  all[date] = { ...log, updatedAt };
   localStorage.setItem(KEY.LOGS, JSON.stringify(all));
   syncNotifier?.onLog?.(date);
 }
@@ -97,9 +108,26 @@ export function getSettings() {
   }
 }
 
-export function saveSettings(settings) {
-  localStorage.setItem(KEY.SETTINGS, JSON.stringify({ ...settings, updatedAt: settings.updatedAt ?? Date.now() }));
+// Same timestamp rule as saveDailyLog.
+export function saveSettings(settings, { updatedAt = Date.now() } = {}) {
+  localStorage.setItem(KEY.SETTINGS, JSON.stringify({ ...settings, updatedAt }));
   syncNotifier?.onSettings?.();
+}
+
+/** True when tracking preferences are still the built-in defaults. */
+export function hasDefaultPreferences(settings) {
+  return PREFERENCE_KEYS.every(k => deepEqual(settings[k], DEFAULT_SETTINGS[k]));
+}
+
+// ── Sync bookkeeping ──────────────────────────────────────────────────────────
+
+/** The sync key this device last pulled with successfully ('' if never). */
+export function getSyncJoinedKey() {
+  return localStorage.getItem(KEY.SYNC_JOINED) || '';
+}
+
+export function setSyncJoinedKey(syncKey) {
+  localStorage.setItem(KEY.SYNC_JOINED, syncKey);
 }
 
 // ── Nutrition cache ───────────────────────────────────────────────────────────
@@ -210,4 +238,12 @@ export function deepMerge(defaults, overrides) {
     }
   }
   return result;
+}
+
+function deepEqual(a, b) {
+  if (a === b) return true;
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(b).length && keys.every(k => deepEqual(a[k], b[k]));
 }

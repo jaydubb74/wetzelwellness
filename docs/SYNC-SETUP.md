@@ -50,8 +50,13 @@ Notes:
 ## How sync behaves
 
 - localStorage remains the source of truth on-device; KV is the shared mirror.
-- Pull on app start; debounced push ~2 s after every edit; per-date
+- Pull on app start and whenever the app comes back into view; debounced
+  push ~2 s after every edit (and when the app is hidden); per-date
   last-write-wins using `updatedAt` timestamps.
+- A device pushes nothing until its first successful pull with the key. If
+  its targets/supplements are still the defaults, it adopts the shared
+  settings (keeping any API key / Oura credentials it has that the shared
+  copy lacks) instead of overwriting them.
 - KV is eventually consistent (~60 s across regions) — fine for one person on
   two devices; just avoid editing the same day on both devices at the same
   moment.

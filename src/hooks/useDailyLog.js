@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import * as storage from '../services/storage.js';
+import * as sync from '../services/sync.js';
 
 export function emptyLog(date) {
   return {
@@ -19,6 +20,11 @@ export function useDailyLog(date) {
   useEffect(() => {
     setLog(storage.getDailyLog(date) || emptyLog(date));
   }, [date]);
+
+  // Reload when a pull brings in another device's newer copy of this day
+  useEffect(() => sync.onRemoteChange(({ dates }) => {
+    if (dates.includes(date)) setLog(storage.getDailyLog(date) || emptyLog(date));
+  }), [date]);
 
   const update = useCallback((updater) => {
     setLog(prev => {

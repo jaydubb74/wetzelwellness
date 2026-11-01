@@ -26,6 +26,7 @@ async function boot() {
       <App />
     </React.StrictMode>
   );
+  sync.startAutoSync();
 }
 
 boot();
