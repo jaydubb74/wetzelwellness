@@ -1,5 +1,8 @@
 import * as storage from './storage.js';
 
+// Single place to change the Claude model used for every LLM call in the app.
+const ANTHROPIC_MODEL = 'claude-haiku-5-5';
+
 // Normalize a meal description for cache key lookup
 function cacheKey(desc) {
   return desc.toLowerCase().trim().replace(/\s+/g, ' ');
@@ -117,7 +120,7 @@ async function callLLM(prompt) {
     method: 'POST',
     headers,
     body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
+      model: ANTHROPIC_MODEL,
       max_tokens: 768,
       messages: [{ role: 'user', content: prompt }],
     }),
