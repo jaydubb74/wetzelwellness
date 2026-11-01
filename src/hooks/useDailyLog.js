@@ -51,6 +51,10 @@ export function useDailyLog(date) {
     update(prev => ({ ...prev, meals: prev.meals.filter(m => m.id !== id) }));
   }, [update]);
 
+  const updateMeal = useCallback((id, patch) => {
+    update(prev => ({ ...prev, meals: prev.meals.map(m => (m.id === id ? { ...m, ...patch } : m)) }));
+  }, [update]);
+
   // ── Supplement helpers ──────────────────────────────────────────────────────
 
   const toggleSupplement = useCallback((suppId) => {
@@ -85,6 +89,7 @@ export function useDailyLog(date) {
     update,
     addMeal,
     removeMeal,
+    updateMeal,
     toggleSupplement,
     setWater,
     setElectrolytes,

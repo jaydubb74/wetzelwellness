@@ -3,6 +3,102 @@
 @tailwind utilities;
 
 @layer base {
+  /* Color tokens: every themed Tailwind shade reads one of these (see
+     tailwind.config.js), so dark mode is just a different set of values.
+     Follows the device's light/dark setting. */
+  :root {
+    color-scheme: light dark;
+    --c-white: 255 255 255;
+    --c-slate-50: 248 250 252;
+    --c-slate-100: 241 245 249;
+    --c-slate-200: 226 232 240;
+    --c-slate-300: 203 213 225;
+    --c-slate-400: 148 163 184;
+    --c-slate-500: 100 116 139;
+    --c-slate-600: 71 85 105;
+    --c-slate-700: 51 65 85;
+    --c-slate-800: 30 41 59;
+    --c-slate-900: 15 23 42;
+    --c-brand-50: 236 253 245;
+    --c-brand-100: 209 250 229;
+    --c-brand-200: 167 243 208;
+    --c-brand-600: 5 150 105;
+    --c-brand-700: 4 120 87;
+    --c-brand-800: 6 95 70;
+    --c-amber-50: 255 251 235;
+    --c-amber-100: 254 243 199;
+    --c-amber-200: 253 230 138;
+    --c-amber-600: 217 119 6;
+    --c-amber-700: 180 83 9;
+    --c-amber-800: 146 64 14;
+    --c-amber-900: 120 53 15;
+    --c-sky-50: 240 249 255;
+    --c-sky-600: 2 132 199;
+    --c-sky-700: 3 105 161;
+    --c-indigo-50: 238 242 255;
+    --c-indigo-100: 224 231 255;
+    --c-indigo-900: 49 46 129;
+    --c-teal-50: 240 253 250;
+    --c-teal-100: 204 251 241;
+    --c-teal-900: 19 78 74;
+    --c-violet-50: 245 243 255;
+    --c-violet-600: 124 58 237;
+    --c-red-50: 254 242 242;
+    --c-red-500: 239 68 68;
+    --c-red-600: 220 38 38;
+    --c-rose-50: 255 241 242;
+    --c-rose-200: 254 205 211;
+    --c-rose-600: 225 29 72;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --c-white: 15 23 42;
+      --c-slate-50: 8 13 28;
+      --c-slate-100: 30 41 59;
+      --c-slate-200: 41 53 74;
+      --c-slate-300: 71 85 105;
+      --c-slate-400: 100 116 139;
+      --c-slate-500: 148 163 184;
+      --c-slate-600: 176 189 206;
+      --c-slate-700: 203 213 225;
+      --c-slate-800: 226 232 240;
+      --c-slate-900: 241 245 249;
+      --c-brand-50: 6 46 34;
+      --c-brand-100: 6 58 42;
+      --c-brand-200: 6 78 59;
+      --c-brand-600: 52 211 153;
+      --c-brand-700: 110 231 183;
+      --c-brand-800: 167 243 208;
+      --c-amber-50: 45 30 6;
+      --c-amber-100: 60 40 8;
+      --c-amber-200: 92 60 10;
+      --c-amber-600: 251 191 36;
+      --c-amber-700: 252 211 77;
+      --c-amber-800: 253 224 138;
+      --c-amber-900: 254 243 199;
+      --c-sky-50: 8 34 54;
+      --c-sky-600: 56 189 248;
+      --c-sky-700: 125 211 252;
+      --c-indigo-50: 30 27 75;
+      --c-indigo-100: 49 46 129;
+      --c-indigo-900: 224 231 255;
+      --c-teal-50: 4 47 46;
+      --c-teal-100: 19 78 74;
+      --c-teal-900: 204 251 241;
+      --c-violet-50: 46 16 101;
+      --c-violet-600: 196 181 253;
+      --c-red-50: 69 10 10;
+      --c-red-500: 248 113 113;
+      --c-red-600: 252 165 165;
+      --c-rose-50: 76 5 25;
+      --c-rose-200: 136 19 55;
+      --c-rose-600: 253 164 175;
+    }
+  }
+}
+
+@layer base {
   html {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -16,7 +112,7 @@
   }
 
   *:focus-visible {
-    @apply outline-none ring-2 ring-brand-500 ring-offset-1;
+    @apply outline-none ring-2 ring-brand-500 ring-offset-1 ring-offset-white;
   }
 }
 

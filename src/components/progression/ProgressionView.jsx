@@ -38,7 +38,7 @@ function ComplianceCard({ label, icon, pct, detail, description }) {
 
 function DotLegend() {
   return (
-    <div className="flex items-center gap-3 text-xs text-slate-500">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
       <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-brand-500 inline-block"/>Good (≥80%)</span>
       <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block"/>Partial</span>
       <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-red-400 inline-block"/>Missed</span>
@@ -350,20 +350,20 @@ export default function ProgressionView({ settings, onNavigateToDate }) {
       {/* Calendar heatmap */}
       {tracked > 0 && (
         <div className="card">
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center justify-between mb-2">
             <h3 className="text-sm font-semibold text-slate-800">Daily Heatmap</h3>
-            <div className="flex items-center gap-2">
-              {period === 'week' && (
-                <button
-                  onClick={() => downloadWeekReport(anchor, settings)}
-                  className="text-xs text-brand-600 hover:text-brand-700 font-medium flex items-center gap-1"
-                  title="Download week summary as text file"
-                >
-                  ↓ Week Report
-                </button>
-              )}
-              <DotLegend />
-            </div>
+            {period === 'week' && (
+              <button
+                onClick={() => downloadWeekReport(anchor, settings)}
+                className="text-xs text-brand-700 hover:text-brand-600 font-medium flex items-center gap-1"
+                title="Download week summary as text file"
+              >
+                ↓ Week Report
+              </button>
+            )}
+          </div>
+          <div className="mb-3">
+            <DotLegend />
           </div>
           <CalendarGrid
             dates={dates}

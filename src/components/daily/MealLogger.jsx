@@ -18,7 +18,34 @@ function toMacros(values, multiplier = 1) {
   }));
 }
 
-export default function MealLogger({ timeBlock, meals, onAdd, onRemove }) {
+function MacroInputs({ values, onChange }) {
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+      {MACRO_FIELDS.map(f => (
+        <label key={f.key} className="block">
+          <span className="block text-[11px] font-semibold text-slate-600 uppercase tracking-wide mb-0.5">
+            {f.label}
+          </span>
+          <span className="relative block">
+            <input
+              type="number"
+              inputMode="numeric"
+              min="0"
+              className="input text-sm px-2 py-1.5 pr-8"
+              value={values[f.key] ?? ''}
+              onChange={e => onChange(f.key, e.target.value)}
+            />
+            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-500 pointer-events-none">
+              {f.unit}
+            </span>
+          </span>
+        </label>
+      ))}
+    </div>
+  );
+}
+
+export default function MealLogger({ timeBlock, meals, onAdd, onRemove, onUpdate }) {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   // { description, original: macros, fromCache, breakdown } while confirming
@@ -29,6 +56,8 @@ export default function MealLogger({ timeBlock, meals, onAdd, onRemove }) {
   const savedMeals = useSavedMeals();
   const [justSaved, setJustSaved] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  // Editing a meal that's already logged: { id, values: macro field → string }
+  const [editing, setEditing] = useState(null);
   const wrapperRef = useRef(null);
 
   const blockMeals = meals.filter(m => m.timeBlock === timeBlock);
@@ -132,29 +161,64 @@ export default function MealLogger({ timeBlock, meals, onAdd, onRemove }) {
 
   const shown = pending ? toMacros(edits, portion) : null;
 
+  function startEdit(meal) {
+    setEditing({
+      id: meal.id,
+      values: Object.fromEntries(MACRO_FIELDS.map(({ key }) => [key, String(meal.macros?.[key] ?? 0)])),
+    });
+  }
+
+  function saveEdit() {
+    onUpdate(editing.id, { macros: toMacros(editing.values) });
+    setEditing(null);
+  }
+
   return (
     <div className="space-y-2">
       {/* ── Logged meals ───────────────────────────────────────────────────── */}
       {blockMeals.map(meal => (
-        <div key={meal.id} className="flex items-start gap-2 group">
-          <div className="flex-1 bg-slate-50 rounded-xl px-3 py-2">
+        editing?.id === meal.id ? (
+          <div key={meal.id} className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2">
             <p className="text-sm text-slate-800 font-medium">{meal.description}</p>
-            <p className="text-xs text-slate-500 mt-0.5">
-              P: {meal.macros?.protein ?? '–'}g &nbsp;·&nbsp;
-              F: {meal.macros?.fat ?? '–'}g &nbsp;·&nbsp;
-              C: {meal.macros?.carbs ?? '–'}g &nbsp;·&nbsp;
-              {meal.macros?.calories ?? '–'} kcal
-            </p>
+            <MacroInputs
+              values={editing.values}
+              onChange={(key, v) => setEditing(e => ({ ...e, values: { ...e.values, [key]: v } }))}
+            />
+            <div className="flex gap-2">
+              <button onClick={saveEdit} className="btn-primary text-xs py-1.5 px-3">Save</button>
+              <button onClick={() => setEditing(null)} className="btn-ghost text-xs py-1.5 px-3">Cancel</button>
+            </div>
           </div>
-          <button
-            onClick={() => onRemove(meal.id)}
-            className="text-slate-500 hover:text-red-500 transition-colors p-2 -m-1 rounded-lg min-w-[44px] min-h-[44px]"
-            aria-label={`Remove ${meal.description}`}
-            title="Remove"
-          >
-            ✕
-          </button>
-        </div>
+        ) : (
+          <div key={meal.id} className="flex items-start gap-1 group">
+            <div className="flex-1 bg-slate-50 rounded-xl px-3 py-2 min-w-0">
+              <p className="text-sm text-slate-800 font-medium">{meal.description}</p>
+              <p className="text-xs text-slate-500 mt-0.5">
+                P: {meal.macros?.protein ?? '–'}g &nbsp;·&nbsp;
+                F: {meal.macros?.fat ?? '–'}g &nbsp;·&nbsp;
+                C: {meal.macros?.carbs ?? '–'}g &nbsp;·&nbsp;
+                {meal.macros?.calories ?? '–'} kcal
+              </p>
+            </div>
+            {onUpdate && (
+              <button
+                onClick={() => startEdit(meal)}
+                className="text-xs font-medium text-slate-500 hover:text-slate-800 transition-colors px-2 rounded-lg min-h-[44px]"
+                aria-label={`Edit ${meal.description}`}
+              >
+                Edit
+              </button>
+            )}
+            <button
+              onClick={() => onRemove(meal.id)}
+              className="text-slate-500 hover:text-red-500 transition-colors p-2 rounded-lg min-w-[44px] min-h-[44px]"
+              aria-label={`Remove ${meal.description}`}
+              title="Remove"
+            >
+              ✕
+            </button>
+          </div>
+        )
       ))}
 
       {/* ── Pending confirmation card ──────────────────────────────────────── */}
@@ -181,28 +245,10 @@ export default function MealLogger({ timeBlock, meals, onAdd, onRemove }) {
           {/* Editable estimate (per serving) */}
           <div>
             <p className="text-xs text-slate-600 mb-1">Per serving — fix anything that looks off:</p>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              {MACRO_FIELDS.map(f => (
-                <label key={f.key} className="block">
-                  <span className="block text-[11px] font-semibold text-slate-600 uppercase tracking-wide mb-0.5">
-                    {f.label}
-                  </span>
-                  <span className="relative block">
-                    <input
-                      type="number"
-                      inputMode="numeric"
-                      min="0"
-                      className="input text-sm px-2 py-1.5 pr-8"
-                      value={edits[f.key] ?? ''}
-                      onChange={e => setEdits(v => ({ ...v, [f.key]: e.target.value }))}
-                    />
-                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-500 pointer-events-none">
-                      {f.unit}
-                    </span>
-                  </span>
-                </label>
-              ))}
-            </div>
+            <MacroInputs
+              values={edits}
+              onChange={(key, v) => setEdits(e => ({ ...e, [key]: v }))}
+            />
           </div>
 
           {/* Portion */}

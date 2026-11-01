@@ -131,14 +131,14 @@ function SupplementManager({ supplements, onChange }) {
             aria-label={`Track ${supp.name}`}
             title="Toggle active"
           />
-          <span className={`text-sm flex-1 ${supp.active ? 'text-slate-800' : 'text-slate-500 line-through'}`}>
+          <span className={`text-sm flex-1 min-w-0 break-words ${supp.active ? 'text-slate-800' : 'text-slate-500 line-through'}`}>
             {supp.name}
           </span>
           <select
             value={supp.timing}
             onChange={e => handleTimingChange(supp.id, e.target.value)}
             aria-label={`When to take ${supp.name}`}
-            className="text-xs border border-slate-200 rounded-lg px-2 py-1 text-slate-600 bg-white focus:outline-none focus:ring-1 focus:ring-brand-400"
+            className="min-w-0 max-w-[48%] text-xs border border-slate-200 rounded-lg px-2 py-1 text-slate-600 bg-white focus:outline-none focus:ring-1 focus:ring-brand-400"
           >
             {TIMING_OPTIONS.map(o => (
               <option key={o.value} value={o.value}>{o.label}</option>

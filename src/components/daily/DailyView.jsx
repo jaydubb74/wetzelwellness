@@ -8,6 +8,7 @@ import MealLogger from './MealLogger.jsx';
 import SupplementChecklist from './SupplementChecklist.jsx';
 import ExerciseLogger from './ExerciseLogger.jsx';
 import HealthActivity from './HealthActivity.jsx';
+import TodaySummary from './TodaySummary.jsx';
 import TimeBlock, { BlockSection, BLOCK_ORDER, currentBlock } from './TimeBlock.jsx';
 import { useOura } from '../../hooks/useOura.js';
 
@@ -80,7 +81,7 @@ export default function DailyView({ settings, jumpDate, onJumpConsumed }) {
 
   const {
     log, update,
-    addMeal, removeMeal,
+    addMeal, removeMeal, updateMeal,
     toggleSupplement,
     setWater, setElectrolytes,
     addExercise, removeExercise,
@@ -103,9 +104,9 @@ export default function DailyView({ settings, jumpDate, onJumpConsumed }) {
     };
   }, [settings.supplements]);
 
-  // Weekly exercise counts for the week containing the selected day
-  const weekCounts = useMemo(
-    () => exerciseForRange(getWeekDates(selectedDate), storage.getAllLogs(), settings).counts,
+  // Exercise for the week containing the selected day
+  const weekExercise = useMemo(
+    () => exerciseForRange(getWeekDates(selectedDate), storage.getAllLogs(), settings),
     [selectedDate, log, settings]
   );
 
@@ -161,6 +162,15 @@ export default function DailyView({ settings, jumpDate, onJumpConsumed }) {
         </button>
       </div>
 
+      {/* At-a-glance status */}
+      <TodaySummary
+        log={log}
+        targets={dayTargets}
+        final={selectedDate < todayKey}
+        weekExercise={weekExercise}
+        oura={oura}
+      />
+
       {/* Macro summary */}
       <MacroSummary meals={log.meals || []} targets={dayTargets.macroTargets} final={selectedDate < todayKey} />
 
@@ -181,6 +191,7 @@ export default function DailyView({ settings, jumpDate, onJumpConsumed }) {
             meals={log.meals}
             onAdd={addMeal}
             onRemove={removeMeal}
+            onUpdate={updateMeal}
           />
         </BlockSection>
         {suppsByTiming['with-food-morning'].length > 0 && (
@@ -202,6 +213,7 @@ export default function DailyView({ settings, jumpDate, onJumpConsumed }) {
             meals={log.meals}
             onAdd={addMeal}
             onRemove={removeMeal}
+            onUpdate={updateMeal}
           />
         </BlockSection>
         <BlockSection title="Hydration">
@@ -227,6 +239,7 @@ export default function DailyView({ settings, jumpDate, onJumpConsumed }) {
             meals={log.meals}
             onAdd={addMeal}
             onRemove={removeMeal}
+            onUpdate={updateMeal}
           />
         </BlockSection>
         {suppsByTiming.afternoon.length > 0 && (
@@ -248,6 +261,7 @@ export default function DailyView({ settings, jumpDate, onJumpConsumed }) {
             meals={log.meals}
             onAdd={addMeal}
             onRemove={removeMeal}
+            onUpdate={updateMeal}
           />
         </BlockSection>
         {suppsByTiming.nighttime.length > 0 && (
@@ -273,7 +287,7 @@ export default function DailyView({ settings, jumpDate, onJumpConsumed }) {
           onRemoveExercise={removeExercise}
         />
         <ExerciseLogger
-          weekCounts={weekCounts}
+          weekCounts={weekExercise.counts}
           goals={settings.exerciseGoals}
           onAdd={addExercise}
         />
