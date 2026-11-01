@@ -107,6 +107,19 @@ describe('local saves', () => {
     expect(JSON.parse(store.getItem('ww_settings'))).not.toHaveProperty('apiKey');
   });
 
+  it('freeze goals onto earlier logs once, without touching timestamps', async () => {
+    const { storage } = await openDevice(memoryStorage());
+    storage.saveDailyLog('2026-10-30', log({ water: 3 }), { updatedAt: 5 });
+    storage.saveDailyLog(DATE, log({ water: 1 }), { updatedAt: 6 });
+    const frozen = { macroTargets: { protein: 180 } };
+
+    storage.stampMissingTargets(frozen, DATE);
+    storage.stampMissingTargets({ macroTargets: { protein: 999 } }, DATE); // already stamped: no-op
+
+    expect(storage.getDailyLog('2026-10-30')).toMatchObject({ targets: frozen, updatedAt: 5 });
+    expect(storage.getDailyLog(DATE).targets).toBeUndefined(); // today follows settings
+  });
+
   it('keep an explicit remote timestamp', async () => {
     const { storage } = await openDevice(memoryStorage());
     storage.saveDailyLog(DATE, log({}), { updatedAt: 42 });

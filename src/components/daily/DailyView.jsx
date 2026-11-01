@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { getLocalDateKey, isToday, formatDisplay, offsetDate } from '../../utils/dates.js';
+import { getLocalDateKey, isToday, formatDisplay, offsetDate, getWeekDates } from '../../utils/dates.js';
+import { exerciseForRange, targetsFor } from '../../utils/scoring.js';
 import { useDailyLog } from '../../hooks/useDailyLog.js';
 import * as storage from '../../services/storage.js';
 import MacroSummary from './MacroSummary.jsx';
@@ -9,7 +10,6 @@ import ExerciseLogger from './ExerciseLogger.jsx';
 import HealthActivity from './HealthActivity.jsx';
 import TimeBlock, { BlockSection } from './TimeBlock.jsx';
 import { useOura } from '../../hooks/useOura.js';
-import { workoutLabel } from '../../services/oura.js';
 
 export default function DailyView({ settings, jumpDate, onJumpConsumed }) {
   // Always initialize to the LOCAL calendar date, never UTC.
@@ -89,17 +89,6 @@ export default function DailyView({ settings, jumpDate, onJumpConsumed }) {
   // Oura data for the selected day (auto-fetches into log.oura)
   const { oura, syncing: ouraSyncing, error: ouraError, refresh: refreshOura } = useOura(selectedDate, log, update);
 
-  // Oura-detected workouts shown alongside manual entries (not stored in exercises[])
-  const ouraExercises = useMemo(() =>
-    (oura?.workouts || []).map(w => ({
-      id: 'oura_' + w.id,
-      category: w.category,
-      type: workoutLabel(w.activity),
-      duration: w.minutes,
-      activeCalories: w.calories,
-      source: 'oura',
-    })), [oura]);
-
   const todayKey = getLocalDateKey();
   const viewingToday = selectedDate === todayKey;
 
@@ -114,30 +103,14 @@ export default function DailyView({ settings, jumpDate, onJumpConsumed }) {
     };
   }, [settings.supplements]);
 
-  // Weekly exercise counts — uses getLocalDateKey (not toISOString) for day keys
-  const weekCounts = useMemo(() => {
-    const allLogs = storage.getAllLogs();
-    const counts = { zone2: 0, hiit: 0, strength: 0 };
-    const anchor = new Date(selectedDate + 'T00:00:00');
-    const sunday = new Date(anchor);
-    sunday.setDate(anchor.getDate() - anchor.getDay());
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(sunday);
-      d.setDate(sunday.getDate() + i);
-      const ds = getLocalDateKey(d); // ← was toISOString().split('T')[0] — bug fixed
-      const l = allLogs[ds];
-      if (!l) continue;
-      for (const ex of l.exercises || []) {
-        const cat = ex.category === 'movement' ? 'hiit' : ex.category;
-        if (cat in counts) counts[cat]++;
-      }
-      // Oura-detected workouts count toward weekly goals too
-      for (const w of l.oura?.workouts || []) {
-        if (w.category in counts) counts[w.category]++;
-      }
-    }
-    return counts;
-  }, [selectedDate, log]);
+  // Weekly exercise counts for the week containing the selected day
+  const weekCounts = useMemo(
+    () => exerciseForRange(getWeekDates(selectedDate), storage.getAllLogs(), settings).counts,
+    [selectedDate, log, settings]
+  );
+
+  // The goals this day is scored against (frozen for past days)
+  const dayTargets = targetsFor(selectedDate, log, settings);
 
   return (
     <div className="space-y-4">
@@ -165,7 +138,7 @@ export default function DailyView({ settings, jumpDate, onJumpConsumed }) {
       </div>
 
       {/* Macro summary */}
-      <MacroSummary meals={log.meals || []} targets={settings.macroTargets} />
+      <MacroSummary meals={log.meals || []} targets={dayTargets.macroTargets} final={selectedDate < todayKey} />
 
       {/* ── Morning ──────────────────────────────────────────────────────── */}
       <TimeBlock id="morning" defaultOpen={true}>
@@ -214,7 +187,7 @@ export default function DailyView({ settings, jumpDate, onJumpConsumed }) {
             onToggle={toggleSupplement}
             showHydration
             water={log.water}
-            waterTarget={settings.waterTarget}
+            waterTarget={dayTargets.waterTarget}
             electrolytes={log.electrolytes}
             onWater={setWater}
             onElectrolytes={setElectrolytes}
@@ -272,7 +245,7 @@ export default function DailyView({ settings, jumpDate, onJumpConsumed }) {
           syncing={ouraSyncing}
           error={ouraError}
           onRefresh={refreshOura}
-          exercises={[...ouraExercises, ...(log.exercises || [])]}
+          exercises={log.exercises || []}
           onRemoveExercise={removeExercise}
         />
         <ExerciseLogger

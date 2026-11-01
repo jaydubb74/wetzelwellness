@@ -3,11 +3,11 @@
  * Runs server-side at /api/oura so the browser never makes a cross-origin
  * request (same pattern as /api/llm).
  *
- * GET /api/oura?endpoint=daily_activity&start_date=2026-07-17&end_date=2026-07-17
+ * GET /api/oura?endpoint=daily_sleep&start_date=2026-07-17&end_date=2026-07-17
  * Header: x-oura-token — the user's Personal Access Token.
  */
 
-const ALLOWED_ENDPOINTS = new Set(['daily_sleep', 'sleep', 'daily_activity', 'workout']);
+const ALLOWED_ENDPOINTS = new Set(['daily_sleep', 'sleep', 'daily_readiness']);
 
 export async function onRequestGet(context) {
   const { request } = context;

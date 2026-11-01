@@ -1,40 +1,58 @@
-import { describe, it, expect } from 'vitest';
-import { mapWorkoutCategory, workoutLabel } from '../oura.js';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { fetchOuraDay } from '../oura.js';
 
-describe('mapWorkoutCategory', () => {
-  it('maps strength-type activities', () => {
-    expect(mapWorkoutCategory('strength_training', 'moderate')).toBe('strength');
-    expect(mapWorkoutCategory('weightlifting', 'easy')).toBe('strength');
-    expect(mapWorkoutCategory('crossFit', 'hard')).toBe('strength');
-  });
+const realFetch = globalThis.fetch;
 
-  it('maps low-intensity movement activities', () => {
-    expect(mapWorkoutCategory('walking', 'easy')).toBe('movement');
-    expect(mapWorkoutCategory('hiking', 'moderate')).toBe('movement');
-    expect(mapWorkoutCategory('yoga', 'easy')).toBe('movement');
-  });
+function stubOura(responses) {
+  const requested = [];
+  globalThis.fetch = async (url) => {
+    const endpoint = new URL(url, 'https://app.test').searchParams.get('endpoint');
+    requested.push(endpoint);
+    const r = responses[endpoint];
+    if (r instanceof Error) return new Response('{}', { status: 500 });
+    return new Response(JSON.stringify({ data: r || [] }));
+  };
+  return requested;
+}
 
-  it('splits cardio by intensity', () => {
-    expect(mapWorkoutCategory('running', 'hard')).toBe('hiit');
-    expect(mapWorkoutCategory('running', 'moderate')).toBe('zone2');
-    expect(mapWorkoutCategory('cycling', 'easy')).toBe('zone2');
-    expect(mapWorkoutCategory('swimming', 'hard')).toBe('hiit');
-  });
-
-  it('maps interval training to hiit', () => {
-    expect(mapWorkoutCategory('interval_training', 'moderate')).toBe('hiit');
-  });
-
-  it('falls back to other', () => {
-    expect(mapWorkoutCategory('badminton', 'easy')).toBe('other');
-    expect(mapWorkoutCategory(null, null)).toBe('other');
-  });
+beforeEach(() => {
+  // Legacy personal access token path: no OAuth refresh involved
+  const store = new Map([['ww_settings', JSON.stringify({ ouraToken: 'test-token' })]]);
+  globalThis.localStorage = { getItem: k => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) };
 });
+afterEach(() => { globalThis.fetch = realFetch; });
 
-describe('workoutLabel', () => {
-  it('prettifies snake_case activities', () => {
-    expect(workoutLabel('strength_training')).toBe('Strength Training');
-    expect(workoutLabel('running')).toBe('Running');
-    expect(workoutLabel(null)).toBe('Workout');
+describe('fetchOuraDay', () => {
+  it('requests only sleep and readiness', async () => {
+    const requested = stubOura({});
+    await fetchOuraDay('2026-11-01');
+    expect(requested.sort()).toEqual(['daily_readiness', 'daily_sleep', 'sleep']);
+  });
+
+  it('maps sleep and readiness', async () => {
+    stubOura({
+      daily_sleep: [{ score: 84 }],
+      sleep: [
+        { type: 'rest', total_sleep_duration: 1200 },
+        { type: 'long_sleep', total_sleep_duration: 27000, deep_sleep_duration: 5400, rem_sleep_duration: 6300, lowest_heart_rate: 48, average_hrv: 61.4 },
+      ],
+      daily_readiness: [{ score: 77, temperature_deviation: -0.2 }],
+    });
+    const day = await fetchOuraDay('2026-11-01');
+
+    expect(day.sleep).toMatchObject({ score: 84, totalSeconds: 27000, restingHeartRate: 48, averageHrv: 61.4 });
+    expect(day.readiness).toEqual({ score: 77, temperatureDeviation: -0.2 });
+    expect(day).not.toHaveProperty('activity');
+    expect(day).not.toHaveProperty('workouts');
+    expect(day.errors).toBeUndefined();
+  });
+
+  it('keeps sleep when readiness fails, and reports the failure', async () => {
+    stubOura({ daily_sleep: [{ score: 84 }], daily_readiness: new Error('down') });
+    const day = await fetchOuraDay('2026-11-01');
+
+    expect(day.sleep.score).toBe(84);
+    expect(day.readiness).toBeNull();
+    expect(day.errors.readiness).toMatch(/500/);
   });
 });

@@ -4,18 +4,23 @@ import * as storage from '../services/storage.js';
 import * as oura from '../services/oura.js';
 import { emptyLog } from './useDailyLog.js';
 
-// How many days back to recheck for activity Oura hadn't finished syncing
-// yet at the time we first fetched that day (daily_activity can lag sleep
-// data by hours). Kept short — most days are complete on the first fetch.
+// How many days back to recheck for sleep/readiness Oura hadn't finished
+// syncing yet at the time we first fetched that day (the ring can take a
+// while to upload). Kept short — most days are complete on the first fetch.
 const BACKFILL_DAYS = 2;
 
 function ouraIncomplete(o) {
-  return !o || o.activity == null;
+  return !o || o.sleep == null || o.readiness == null;
+}
+
+// Stored before readiness was fetched (those copies carried activity/workouts)
+function ouraOutdated(o) {
+  return Boolean(o) && !('readiness' in o);
 }
 
 /**
  * One-time-per-session sweep of the last BACKFILL_DAYS days: re-fetches any
- * day whose activity was still missing when it was last fetched, and applies
+ * day whose sleep or readiness was still missing when it was last fetched, and applies
  * the result to THAT day's stored log (not today's), so a sync triggered
  * while viewing today still lands on the right date.
  */
@@ -37,7 +42,8 @@ async function backfillRecentDays(todayKey) {
 /**
  * Keeps `log.oura` populated for the given date.
  * - Past days: fetched once, then served from the stored log forever —
- *   unless activity was missing, in which case backfillRecentDays retries it.
+ *   unless sleep/readiness was missing, in which case backfillRecentDays
+ *   retries it, or the copy predates readiness, in which case it's refetched.
  * - Today: re-fetched when the stored copy is older than TODAY_REFRESH_MS.
  * - No token configured: does nothing.
  */
@@ -52,7 +58,7 @@ export function useOura(date, log, updateLog) {
     const isToday = date === getLocalDateKey();
     const existing = log?.oura;
     const fresh = existing && (Date.now() - (existing.fetchedAt || 0) < oura.TODAY_REFRESH_MS);
-    if (!force && existing && (!isToday || fresh)) return;
+    if (!force && existing && !ouraOutdated(existing) && (!isToday || fresh)) return;
 
     inFlight.current = true;
     setSyncing(true);

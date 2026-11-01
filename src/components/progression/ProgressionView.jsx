@@ -2,8 +2,12 @@ import { useState, useMemo } from 'react';
 import { today, getWeekDates, getMonthDates, offsetDate, offsetMonth, weekLabel, monthLabel, formatShort, formatFull } from '../../utils/dates.js';
 import { useCompliance } from '../../hooks/useCompliance.js';
 import * as storage from '../../services/storage.js';
+import { EXERCISE_GOALS, formatVariance, scorePeriod } from '../../utils/scoring.js';
 
-function ComplianceCard({ label, icon, pct, description }) {
+const BAND_TEXT = { green: 'text-brand-600', yellow: 'text-amber-600', red: 'text-red-500' };
+
+// `detail` spells out what the percentage counts, e.g. "1 of 5 logged days".
+function ComplianceCard({ label, icon, pct, detail, description }) {
   if (pct === null) {
     return (
       <div className="card-sm text-center">
@@ -23,6 +27,7 @@ function ComplianceCard({ label, icon, pct, description }) {
       <p className="text-lg mb-1">{icon}</p>
       <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{label}</p>
       <p className={`text-2xl font-bold mt-1 ${color}`}>{pct}%</p>
+      {detail && <p className="text-xs font-medium text-slate-600 mt-0.5">{detail}</p>}
       <div className="mt-2 h-1.5 bg-slate-100 rounded-full overflow-hidden">
         <div className={`h-full rounded-full macro-bar ${barColor}`} style={{ width: `${pct}%` }} />
       </div>
@@ -64,7 +69,7 @@ function CalendarGrid({ dates, daily, onSelect, selectedDate, onNavigateToDate }
           const data = daily[date];
           let dotColor = 'bg-slate-200';
           if (data) {
-            const avg = (data.nutrition + data.supplements + data.hydration) / 3;
+            const avg = (data.protein.score + data.supplements + data.hydration) / 3;
             dotColor = avg >= 0.8 ? 'bg-brand-500' : avg >= 0.5 ? 'bg-amber-400' : 'bg-red-400';
           }
 
@@ -102,7 +107,9 @@ function CalendarGrid({ dates, daily, onSelect, selectedDate, onNavigateToDate }
   );
 }
 
-function ExerciseProgress({ goals, weekCounts }) {
+// `exercise` is scoring.exerciseForRange output: targets are already scaled to
+// the period's length (3/week → ~13 for a month).
+function ExerciseProgress({ goals, exercise }) {
   const categories = [
     { id: 'zone2',    icon: '🚴', label: 'Zone 2' },
     { id: 'hiit',     icon: '⚡', label: 'HIIT' },
@@ -113,10 +120,11 @@ function ExerciseProgress({ goals, weekCounts }) {
     <div className="space-y-2.5">
       {categories.map(cat => {
         const goal = goals[cat.id];
-        if (!goal) return null;
-        const count = weekCounts[cat.id] || 0;
-        const target = goal.target;
-        const met = count >= target;
+        const exact = exercise.targets[cat.id];
+        if (!goal || !exact) return null;
+        const count = exercise.counts[cat.id] || 0;
+        const target = Math.max(1, Math.round(exact));
+        const met = count >= exact;
 
         return (
           <div key={cat.id} className="flex items-center gap-3">
@@ -128,14 +136,24 @@ function ExerciseProgress({ goals, weekCounts }) {
                   {count}/{target} {met ? '✓' : ''}
                 </span>
               </div>
-              <div className="flex gap-1">
-                {Array.from({ length: target }, (_, i) => (
+              {target <= 7 ? (
+                <div className="flex gap-1">
+                  {Array.from({ length: target }, (_, i) => (
+                    <div
+                      key={i}
+                      className={`h-2 flex-1 rounded-full ${i < count ? (met ? 'bg-brand-500' : 'bg-amber-400') : 'bg-slate-200'}`}
+                    />
+                  ))}
+                </div>
+              ) : (
+                // Too many sessions for one segment each (month view)
+                <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
                   <div
-                    key={i}
-                    className={`h-2 flex-1 rounded-full ${i < count ? (met ? 'bg-brand-500' : 'bg-amber-400') : 'bg-slate-200'}`}
+                    className={`h-full rounded-full ${met ? 'bg-brand-500' : 'bg-amber-400'}`}
+                    style={{ width: `${Math.min(count / exact, 1) * 100}%` }}
                   />
-                ))}
-              </div>
+                </div>
+              )}
             </div>
           </div>
         );
@@ -147,7 +165,7 @@ function ExerciseProgress({ goals, weekCounts }) {
 function downloadWeekReport(anchor, settings) {
   const dates = getWeekDates(anchor);
   const logs = storage.getAllLogs();
-  const activeSupps = (settings.supplements || []).filter(s => s.active);
+  const { daily, tracked, summary, exercise } = scorePeriod(dates, logs, settings);
   const label = weekLabel(anchor);
 
   const lines = [
@@ -158,36 +176,16 @@ function downloadWeekReport(anchor, settings) {
   ];
 
   // Weekly overview
-  let nutritionMet = 0, suppsMet = 0, hydrationMet = 0, tracked = 0;
-  const exerciseCounts = { zone2: 0, hiit: 0, strength: 0 };
-
-  for (const date of dates) {
-    const log = logs[date];
-    if (!log) continue;
-    tracked++;
-    const protein = (log.meals || []).reduce((s, m) => s + (m.macros?.protein || 0), 0);
-    const nutritionScore = settings.macroTargets.protein > 0 ? protein / settings.macroTargets.protein : 0;
-    const checkedCount = activeSupps.filter(s => log.supplements?.[s.id]).length;
-    const suppScore = activeSupps.length > 0 ? checkedCount / activeSupps.length : 1;
-    const hydrationScore = settings.waterTarget > 0 ? Math.min((log.water || 0) / settings.waterTarget, 1) : 1;
-    if (nutritionScore >= 0.8) nutritionMet++;
-    if (suppScore >= 0.8) suppsMet++;
-    if (hydrationScore >= 0.8) hydrationMet++;
-    for (const ex of log.exercises || []) {
-      if (ex.category in exerciseCounts) exerciseCounts[ex.category]++;
-    }
-  }
-
-  const pct = (n) => tracked > 0 ? `${Math.round((n / tracked) * 100)}%` : 'N/A';
+  const pct = (v) => (v == null ? 'N/A' : `${v}%`);
   const goals = settings.exerciseGoals;
 
   lines.push(`## Weekly Overview (${tracked}/7 days logged)`);
-  lines.push(`- Nutrition compliance: ${pct(nutritionMet)} (protein ≥80% target)`);
-  lines.push(`- Supplement compliance: ${pct(suppsMet)}`);
-  lines.push(`- Hydration compliance: ${pct(hydrationMet)} (≥${settings.waterTarget} glasses)`);
-  lines.push(`- Zone 2 Cardio: ${exerciseCounts.zone2}/${goals.zone2?.target ?? 3} sessions`);
-  lines.push(`- HIIT: ${exerciseCounts.hiit}/${goals.hiit?.target ?? 3} sessions`);
-  lines.push(`- Strength Training: ${exerciseCounts.strength}/${goals.strength?.target ?? 3} sessions`);
+  lines.push(`- Nutrition compliance: ${pct(summary.nutrition)} (protein within ±10% of target)`);
+  lines.push(`- Supplement compliance: ${pct(summary.supplements)}`);
+  lines.push(`- Hydration compliance: ${pct(summary.hydration)} (≥80% of water target)`);
+  for (const k of EXERCISE_GOALS) {
+    lines.push(`- ${goals[k]?.label ?? k}: ${exercise.counts[k]}/${Math.round(exercise.targets[k])} sessions`);
+  }
   lines.push(``);
   lines.push(`---`);
   lines.push(``);
@@ -204,45 +202,36 @@ function downloadWeekReport(anchor, settings) {
     lines.push(`### ${dayName}, ${formatShort(date)}`);
 
     const log = logs[date];
-    if (!log) {
-      lines.push(`_No log recorded_`);
+    const day = daily[date];
+    if (!day) {
+      lines.push(`_Nothing logged_`);
       lines.push(``);
       continue;
     }
 
-    // Nutrition
+    // Nutrition — against the goals that applied that day
+    const { protein, totals, targets } = day;
     const meals = log.meals || [];
-    const totals = meals.reduce((acc, m) => ({
-      protein: acc.protein + (m.macros?.protein || 0),
-      fat: acc.fat + (m.macros?.fat || 0),
-      carbs: acc.carbs + (m.macros?.carbs || 0),
-      calories: acc.calories + (m.macros?.calories || 0),
-    }), { protein: 0, fat: 0, carbs: 0, calories: 0 });
-
-    const proteinPct = settings.macroTargets.protein > 0
-      ? Math.round((totals.protein / settings.macroTargets.protein) * 100)
-      : 0;
-    lines.push(`**Nutrition:** ${proteinPct}% protein target`);
-    lines.push(`- Protein: ${Math.round(totals.protein)}g / ${settings.macroTargets.protein}g`);
-    lines.push(`- Fat: ${Math.round(totals.fat)}g / ${settings.macroTargets.fat}g`);
-    lines.push(`- Carbs: ${Math.round(totals.carbs)}g / ${settings.macroTargets.carbs}g`);
-    lines.push(`- Calories: ${Math.round(totals.calories)} / ${settings.macroTargets.calories}`);
+    lines.push(`**Nutrition:** protein ${protein.band ? `${formatVariance(protein.variance)} (${protein.band})` : 'no target'}`);
+    lines.push(`- Protein: ${Math.round(totals.protein)}g / ${targets.macroTargets.protein}g`);
+    lines.push(`- Fat: ${Math.round(totals.fat)}g / ${targets.macroTargets.fat}g`);
+    lines.push(`- Carbs: ${Math.round(totals.carbs)}g / ${targets.macroTargets.carbs}g`);
+    lines.push(`- Calories: ${Math.round(totals.calories)} / ${targets.macroTargets.calories}`);
     if (meals.length > 0) {
       lines.push(`- Meals logged: ${meals.map(m => m.description).join(', ')}`);
     }
 
     // Supplements
-    const checkedCount = activeSupps.filter(s => log.supplements?.[s.id]).length;
-    const suppPct = activeSupps.length > 0 ? Math.round((checkedCount / activeSupps.length) * 100) : 100;
-    const checkedNames = activeSupps.filter(s => log.supplements?.[s.id]).map(s => s.name);
-    const missedNames = activeSupps.filter(s => !log.supplements?.[s.id]).map(s => s.name);
-    lines.push(`**Supplements:** ${suppPct}% (${checkedCount}/${activeSupps.length})`);
+    const supps = targets.supplements;
+    const checkedCount = supps.filter(s => log.supplements?.[s.id]).length;
+    const missedNames = supps.filter(s => !log.supplements?.[s.id]).map(s => s.name);
+    lines.push(`**Supplements:** ${Math.round(day.supplements * 100)}% (${checkedCount}/${supps.length})`);
     if (missedNames.length > 0) lines.push(`- Missed: ${missedNames.join(', ')}`);
 
     // Hydration
     const water = log.water || 0;
-    const waterPct = settings.waterTarget > 0 ? Math.round((water / settings.waterTarget) * 100) : 100;
-    lines.push(`**Hydration:** ${waterPct}% — ${water}/${settings.waterTarget} glasses${log.electrolytes ? ' + electrolytes ✓' : ''}`);
+    const waterPct = targets.waterTarget > 0 ? Math.round((water / targets.waterTarget) * 100) : 100;
+    lines.push(`**Hydration:** ${waterPct}% — ${water}/${targets.waterTarget} glasses${log.electrolytes ? ' + electrolytes ✓' : ''}`);
 
     // Exercise
     const exercises = log.exercises || [];
@@ -250,6 +239,13 @@ function downloadWeekReport(anchor, settings) {
       lines.push(`**Exercise:** ${exercises.map(e => `${e.type || e.category}${e.duration ? ` (${e.duration} min)` : ''}`).join(', ')}`);
     } else {
       lines.push(`**Exercise:** Rest day`);
+    }
+
+    // Oura
+    const sleepScore = log.oura?.sleep?.score;
+    const readinessScore = log.oura?.readiness?.score;
+    if (sleepScore != null || readinessScore != null) {
+      lines.push(`**Oura:** sleep ${sleepScore ?? '–'} · readiness ${readinessScore ?? '–'}`);
     }
 
     lines.push(``);
@@ -273,7 +269,9 @@ export default function ProgressionView({ settings, onNavigateToDate }) {
     return period === 'week' ? getWeekDates(anchor) : getMonthDates(anchor);
   }, [period, anchor]);
 
-  const { daily, summary, weeklyExercise, tracked } = useCompliance(dates, settings);
+  const { daily, summary, met, exercise, tracked } = useCompliance(dates, settings);
+  // What the day-based percentages count: days that hit the goal, out of days logged
+  const days = n => `${n} of ${tracked} logged day${tracked === 1 ? '' : 's'}`;
 
   const periodLabel = period === 'week' ? weekLabel(anchor) : monthLabel(anchor);
 
@@ -315,25 +313,29 @@ export default function ProgressionView({ settings, onNavigateToDate }) {
           label="Nutrition"
           icon="🥗"
           pct={summary.nutrition}
-          description="Protein ≥80% of target"
+          detail={days(met.nutrition)}
+          description="Protein within ±10% of goal"
         />
         <ComplianceCard
           label="Supplements"
           icon="💊"
           pct={summary.supplements}
-          description="≥80% of daily list"
+          detail={days(met.supplements)}
+          description="Took at least 80% of the list"
         />
         <ComplianceCard
           label="Hydration"
           icon="💧"
           pct={summary.hydration}
-          description={`≥80% of ${settings.waterTarget} glasses`}
+          detail={days(met.hydration)}
+          description="Drank at least 80% of the water goal"
         />
         <ComplianceCard
           label="Exercise"
           icon="🏋️"
           pct={summary.exercise}
-          description="All weekly targets met"
+          detail="avg. progress toward goals"
+          description="Per-goal breakdown below"
         />
       </div>
 
@@ -378,8 +380,18 @@ export default function ProgressionView({ settings, onNavigateToDate }) {
                 {formatShort(selectedDate)}
               </p>
               <div className="flex gap-4">
+                {(() => {
+                  const { protein } = daily[selectedDate];
+                  return (
+                    <div className="text-center">
+                      <p className={`text-lg font-bold ${BAND_TEXT[protein.band] || 'text-slate-400'}`}>
+                        {protein.band ? formatVariance(protein.variance) : '–'}
+                      </p>
+                      <p className="text-[11px] text-slate-400">Protein</p>
+                    </div>
+                  );
+                })()}
                 {[
-                  { label: 'Nutrition',    value: daily[selectedDate].nutrition,    color: 'text-brand-600' },
                   { label: 'Supplements',  value: daily[selectedDate].supplements,  color: 'text-sky-600' },
                   { label: 'Hydration',    value: daily[selectedDate].hydration,    color: 'text-amber-600' },
                 ].map(item => (
@@ -400,7 +412,7 @@ export default function ProgressionView({ settings, onNavigateToDate }) {
           <h3 className="text-sm font-semibold text-slate-800">{period === 'week' ? "This Week's Exercise" : "Month Exercise"}</h3>
           <span className="text-xs text-slate-400">{periodLabel}</span>
         </div>
-        <ExerciseProgress goals={settings.exerciseGoals} weekCounts={weeklyExercise} />
+        <ExerciseProgress goals={settings.exerciseGoals} exercise={exercise} />
       </div>
     </div>
   );

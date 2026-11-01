@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import * as storage from '../services/storage.js';
 import * as sync from '../services/sync.js';
+import { today } from '../utils/dates.js';
+import { snapshotTargets } from '../utils/scoring.js';
 
 export function emptyLog(date) {
   return {
@@ -28,7 +30,12 @@ export function useDailyLog(date) {
 
   const update = useCallback((updater) => {
     setLog(prev => {
-      const next = typeof updater === 'function' ? updater(prev) : { ...prev, ...updater };
+      const edited = typeof updater === 'function' ? updater(prev) : { ...prev, ...updater };
+      // Freeze the goals this day is scored against (see scoring.targetsFor):
+      // today keeps following settings, a past day keeps what it had.
+      const next = date >= today() || !edited.targets
+        ? { ...edited, targets: snapshotTargets(storage.getSettings()) }
+        : edited;
       storage.saveDailyLog(date, next);
       return next;
     });

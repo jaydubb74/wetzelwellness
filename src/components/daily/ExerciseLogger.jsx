@@ -17,30 +17,21 @@ export function ExerciseList({ exercises, onRemove }) {
     <div className="space-y-2">
       {exercises.map(ex => {
         const meta = categoryMeta(ex.category);
-        const fromOura = ex.source === 'oura';
         return (
           <div key={ex.id} className="flex items-center gap-2 group">
             <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full ${meta.color}`}>
               {meta.icon} {meta.label}
             </span>
-            {fromOura && (
-              <span className="text-[10px] font-medium text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-full shrink-0" title="Imported from Oura">
-                💍
-              </span>
-            )}
             <span className="text-sm text-slate-700 flex-1">{ex.type}</span>
             <span className="text-xs text-slate-400 shrink-0">
-              {ex.category === 'movement' && !fromOura
+              {ex.category === 'movement'
                 ? `${ex.activeCalories ?? '–'} active cal`
-                : [ex.duration ? `${ex.duration} min` : null, fromOura && ex.activeCalories ? `${ex.activeCalories} cal` : null]
-                    .filter(Boolean).join(' · ') || '–'}
+                : ex.duration ? `${ex.duration} min` : '–'}
             </span>
-            {!fromOura && (
-              <button
-                onClick={() => onRemove(ex.id)}
-                className="text-slate-300 hover:text-red-400 transition-colors p-2 -m-1 rounded min-w-[36px] min-h-[36px]"
-              >✕</button>
-            )}
+            <button
+              onClick={() => onRemove(ex.id)}
+              className="text-slate-300 hover:text-red-400 transition-colors p-2 -m-1 rounded min-w-[36px] min-h-[36px]"
+            >✕</button>
           </div>
         );
       })}

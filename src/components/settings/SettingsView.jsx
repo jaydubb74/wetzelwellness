@@ -350,7 +350,7 @@ function SyncSettings({ settings, onUpdate, markSaved }) {
           )}
         </div>
         <p className="text-xs text-slate-400">
-          Pulls daily sleep, activity, and workouts. Create an application at{' '}
+          Pulls daily sleep and readiness. Create an application at{' '}
           <a href="https://cloud.ouraring.com/oauth/applications" target="_blank" rel="noreferrer" className="text-brand-500 hover:underline">
             cloud.ouraring.com
           </a>{' '}

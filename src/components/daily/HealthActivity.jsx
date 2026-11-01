@@ -30,17 +30,19 @@ function Stat({ label, value }) {
   );
 }
 
-function MovementCard({ exercises, activity, ouraError, onRemove }) {
+function tempDeviation(c) {
+  if (c == null) return '–';
+  return `${c > 0 ? '+' : c < 0 ? '−' : ''}${Math.abs(c).toFixed(1)} °C`;
+}
+
+function MovementCard({ exercises, onRemove }) {
   const goalEntries = exercises.filter(ex => ex.category === 'movement');
   const activities = exercises.filter(ex => ex.category !== 'movement');
   const goalCal = goalEntries.reduce((sum, ex) => sum + (ex.activeCalories || 0), 0);
 
   return (
     <div className="bg-amber-50/60 border border-amber-100 rounded-xl p-3 space-y-3">
-      <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold text-amber-900">🔥 Movement</p>
-        <ScoreBadge score={activity?.score} />
-      </div>
+      <p className="text-xs font-semibold text-amber-900">🔥 Movement</p>
 
       {/* Movement goal achievement */}
       {goalEntries.length > 0 ? (
@@ -52,29 +54,19 @@ function MovementCard({ exercises, activity, ouraError, onRemove }) {
         <p className="text-xs text-slate-400">Movement goal not hit yet</p>
       )}
 
-      {/* Oura activity stats, when available */}
-      {activity && (
-        <div className="grid grid-cols-3 gap-2">
-          <Stat label="Steps" value={activity.steps?.toLocaleString() ?? '–'} />
-          <Stat label="Active Cal" value={activity.activeCalories?.toLocaleString() ?? '–'} />
-          <Stat label="Total Cal" value={activity.totalCalories?.toLocaleString() ?? '–'} />
-        </div>
-      )}
-
       {/* Logged workouts / activities */}
       {activities.length > 0 ? (
         <ExerciseList exercises={activities} onRemove={onRemove} />
       ) : (
         <p className="text-xs text-slate-400">No activities logged yet</p>
       )}
-
-      {!activity && ouraError && <p className="text-xs text-red-500">{ouraError}</p>}
     </div>
   );
 }
 
 /**
- * Daily health cards for one day: Oura sleep + movement (goal, logged activities).
+ * Daily health cards for one day: Oura sleep + readiness, and movement
+ * (goal and logged activities, entered by hand).
  */
 export default function HealthActivity({ oura, syncing, error, onRefresh, exercises = [], onRemoveExercise }) {
   const configured = ouraService.isConnected();
@@ -84,7 +76,7 @@ export default function HealthActivity({ oura, syncing, error, onRefresh, exerci
       <div className="space-y-3">
         <p className="text-xs text-slate-400 bg-slate-50 rounded-xl px-3 py-2.5">
           💍 Connect your Oura ring in <span className="font-medium">Settings</span> to
-          auto-fill sleep, activity, and workouts.
+          auto-fill sleep and readiness.
         </p>
         <MovementCard exercises={exercises} onRemove={onRemoveExercise} />
       </div>
@@ -92,7 +84,7 @@ export default function HealthActivity({ oura, syncing, error, onRefresh, exerci
   }
 
   const sleep = oura?.sleep;
-  const activity = oura?.activity;
+  const readiness = oura?.readiness;
 
   return (
     <div className="space-y-3">
@@ -118,14 +110,26 @@ export default function HealthActivity({ oura, syncing, error, onRefresh, exerci
           )}
         </div>
 
-        {/* Movement */}
-        <MovementCard
-          exercises={exercises}
-          activity={activity}
-          ouraError={oura?.errors?.activity}
-          onRemove={onRemoveExercise}
-        />
+        {/* Readiness */}
+        <div className="bg-teal-50/60 border border-teal-100 rounded-xl p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold text-teal-900">🔋 Readiness</p>
+            <ScoreBadge score={readiness?.score} />
+          </div>
+          {readiness ? (
+            <div className="grid grid-cols-3 gap-2">
+              <Stat label="Score" value={readiness.score ?? '–'} />
+              <Stat label="Body temp" value={tempDeviation(readiness.temperatureDeviation)} />
+            </div>
+          ) : oura?.errors?.readiness ? (
+            <p className="text-xs text-red-500">{oura.errors.readiness}</p>
+          ) : (
+            <p className="text-xs text-slate-400">No readiness data yet</p>
+          )}
+        </div>
       </div>
+
+      <MovementCard exercises={exercises} onRemove={onRemoveExercise} />
 
       <div className="flex items-center gap-2">
         <button

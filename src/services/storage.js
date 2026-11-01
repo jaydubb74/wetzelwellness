@@ -95,6 +95,24 @@ export function saveDailyLog(date, log, { updatedAt = Date.now() } = {}) {
   syncNotifier?.onLog?.(date);
 }
 
+/**
+ * One-time freeze for days logged before goals were recorded per day: gives
+ * every earlier log without a snapshot the `targets` passed in. Leaves
+ * updatedAt alone and doesn't sync — each device stamps its own copy from
+ * the shared settings, and later edits carry the snapshot anyway.
+ */
+export function stampMissingTargets(targets, beforeDate) {
+  const all = getAllLogs();
+  let changed = false;
+  for (const [date, log] of Object.entries(all)) {
+    if (date < beforeDate && !log.targets) {
+      all[date] = { ...log, targets };
+      changed = true;
+    }
+  }
+  if (changed) localStorage.setItem(KEY.LOGS, JSON.stringify(all));
+}
+
 export function getAllLogs() {
   try {
     return JSON.parse(localStorage.getItem(KEY.LOGS) || '{}');

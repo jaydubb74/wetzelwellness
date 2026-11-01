@@ -15,7 +15,7 @@ export const TODAY_REFRESH_MS = 30 * 60 * 1000;
 //    client id/secret + authorization-code flow) ─────────────────────────────
 
 const AUTHORIZE_URL = 'https://cloud.ouraring.com/oauth/authorize';
-const OAUTH_SCOPES = 'personal daily workout';
+const OAUTH_SCOPES = 'personal daily';
 const STATE_KEY = 'ww_oura_oauth_state';
 const EXPIRY_MARGIN_MS = 5 * 60 * 1000;
 
@@ -142,13 +142,14 @@ async function ouraGet(endpoint, startDate, endDate = startDate) {
 
 export async function testOuraConnection() {
   const today = new Date().toISOString().slice(0, 10);
-  await ouraGet('daily_activity', today);
+  await ouraGet('daily_sleep', today);
   return true;
 }
 
 /**
- * Fetches sleep, activity, and workouts for one date and returns the
- * summary object stored as `log.oura`.
+ * Fetches sleep and readiness for one date and returns the summary object
+ * stored as `log.oura`. (Activity and workouts aren't used — Oura's workout
+ * data proved unreliable — so they're not requested.)
  *
  * Each endpoint is fetched independently (Promise.allSettled) so that one
  * failing call — e.g. a transient 500, or a scope Oura rejects — doesn't
@@ -156,25 +157,22 @@ export async function testOuraConnection() {
  * instead of being swallowed into an indistinguishable "no data yet".
  */
 export async function fetchOuraDay(date) {
-  const [dailySleepRes, sleepSessionsRes, dailyActivityRes, workoutsRes] = await Promise.allSettled([
+  const [dailySleepRes, sleepSessionsRes, readinessRes] = await Promise.allSettled([
     ouraGet('daily_sleep', date),
     // Oura's `sleep` endpoint dates a period by its bedtime_start's calendar
     // day, one day before the wake-day `daily_sleep` score it belongs to —
     // so a same-day query alone can miss last night's session entirely.
     ouraGet('sleep', offsetDate(date, -1), date),
-    ouraGet('daily_activity', date),
-    ouraGet('workout', date),
+    ouraGet('daily_readiness', date),
   ]);
 
   const dailySleep = dailySleepRes.status === 'fulfilled' ? dailySleepRes.value : [];
   const sleepSessions = sleepSessionsRes.status === 'fulfilled' ? sleepSessionsRes.value : [];
-  const dailyActivity = dailyActivityRes.status === 'fulfilled' ? dailyActivityRes.value : [];
-  const workouts = workoutsRes.status === 'fulfilled' ? workoutsRes.value : [];
+  const dailyReadiness = readinessRes.status === 'fulfilled' ? readinessRes.value : [];
 
   const errors = {};
   if (dailySleepRes.status === 'rejected') errors.sleep = dailySleepRes.reason.message;
-  if (dailyActivityRes.status === 'rejected') errors.activity = dailyActivityRes.reason.message;
-  if (workoutsRes.status === 'rejected') errors.workouts = workoutsRes.reason.message;
+  if (readinessRes.status === 'rejected') errors.readiness = readinessRes.reason.message;
 
   // Longest long_sleep session in the window is the one the daily score covers.
   const mainSleep = sleepSessions
@@ -193,58 +191,18 @@ export async function fetchOuraDay(date) {
       }
     : null;
 
-  const act = dailyActivity[0];
-  const activity = act
+  const r = dailyReadiness[0];
+  const readiness = r
     ? {
-        score: act.score ?? null,
-        steps: act.steps ?? null,
-        activeCalories: act.active_calories ?? null,
-        totalCalories: act.total_calories ?? null,
+        score: r.score ?? null,
+        temperatureDeviation: r.temperature_deviation ?? null,
       }
     : null;
 
   return {
     sleep,
-    activity,
-    workouts: workouts.map(w => ({
-      id: w.id,
-      activity: w.activity,
-      category: mapWorkoutCategory(w.activity, w.intensity),
-      intensity: w.intensity ?? null,
-      calories: w.calories != null ? Math.round(w.calories) : null,
-      minutes: workoutMinutes(w),
-      start: w.start_datetime ?? null,
-    })),
+    readiness,
     fetchedAt: Date.now(),
     errors: Object.keys(errors).length ? errors : undefined,
   };
-}
-
-function workoutMinutes(w) {
-  if (!w.start_datetime || !w.end_datetime) return null;
-  const ms = new Date(w.end_datetime) - new Date(w.start_datetime);
-  return ms > 0 ? Math.round(ms / 60000) : null;
-}
-
-/**
- * Maps an Oura workout activity + intensity to the app's exercise categories
- * (zone2 / hiit / strength / movement / other).
- */
-export function mapWorkoutCategory(activity, intensity) {
-  const a = (activity || '').toLowerCase();
-  if (/(strength|weight|functional|cross_?training|crossfit)/.test(a)) return 'strength';
-  if (/(interval|hiit)/.test(a)) return 'hiit';
-  if (/(walk|hik|yoga|stretch|pilates|house|golf)/.test(a)) return 'movement';
-  if (/(run|jog|cycl|bik|row|swim|elliptical|stair|cardio|ski|skat)/.test(a)) {
-    return intensity === 'hard' ? 'hiit' : 'zone2';
-  }
-  return 'other';
-}
-
-/** Pretty label: "strength_training" → "Strength Training" */
-export function workoutLabel(activity) {
-  return (activity || 'Workout')
-    .split('_')
-    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(' ');
 }
