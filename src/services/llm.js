@@ -121,7 +121,7 @@ async function callLLM(prompt) {
     headers,
     body: JSON.stringify({
       model: ANTHROPIC_MODEL,
-      max_tokens: 768,
+      max_tokens: 2048,
       messages: [{ role: 'user', content: prompt }],
     }),
   });
@@ -132,11 +132,25 @@ async function callLLM(prompt) {
   }
 
   const data = await res.json();
-  const text = data.content?.[0]?.text?.trim() || '';
+  // Newer models may lead with non-text blocks (e.g. reasoning); join every text block.
+  const text = (data.content || [])
+    .filter(b => b.type === 'text' && typeof b.text === 'string')
+    .map(b => b.text)
+    .join('\n')
+    .trim();
 
-  // Extract JSON from the response
+  // Extract JSON from the response (tolerates prose or ```json fences around it)
   const match = text.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error('Could not parse JSON from LLM response.');
+  if (!match) {
+    const why = data.stop_reason === 'max_tokens'
+      ? 'the reply was cut off'
+      : text ? `got: "${text.slice(0, 80)}"` : 'the reply had no text';
+    throw new Error(`Could not parse JSON from LLM response (${why}).`);
+  }
 
-  return JSON.parse(match[0]);
+  try {
+    return JSON.parse(match[0]);
+  } catch {
+    throw new Error('The AI returned malformed JSON. Please try again.');
+  }
 }
