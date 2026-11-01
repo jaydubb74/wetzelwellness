@@ -68,8 +68,9 @@ Use realistic portion estimates. Protein, fat, carbs, and calories must be posit
 // ── Settings AI assistant ─────────────────────────────────────────────────────
 
 export async function applySettingsIntent(userMessage, currentSettings) {
-  // Never send credentials (or let the model edit them) — strip from both sides
-  const { apiKey, ouraToken, syncKey, ...safeSettings } = currentSettings;
+  // Only tracking preferences go to the model and only those come back, so
+  // keys and Oura tokens are never sent or editable — including ones added later.
+  const safeSettings = storage.pickPreferences(currentSettings);
 
   const prompt = `You are a configuration assistant for a personal wellness tracker. Apply the user's requested change to their settings.
 
@@ -88,11 +89,7 @@ Examples:
 
 When adding a supplement, generate a unique id like "s<timestamp>", include: id, name, timing ("morning-empty"|"with-food-morning"|"afternoon"|"nighttime"), active: true.`;
 
-  const patch = await callLLM(prompt);
-  delete patch.apiKey;
-  delete patch.ouraToken;
-  delete patch.syncKey;
-  return patch;
+  return storage.pickPreferences(await callLLM(prompt));
 }
 
 // ── Core API call ─────────────────────────────────────────────────────────────

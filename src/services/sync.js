@@ -113,9 +113,11 @@ async function doPull() {
         settings.updatedAt > localAt || (joining && storage.hasDefaultPreferences(localSettings))
       );
       if (adopt) {
-        // Never let a pulled settings object clobber the local sync key we
-        // just used, or a credential this device has and the shared copy lacks.
-        const merged = { ...settings.settings, syncKey };
+        // Never let a pulled settings object clobber this device's own keys
+        // (older shared copies may still carry an apiKey), or a credential
+        // this device has and the shared copy lacks.
+        const merged = { ...settings.settings };
+        for (const k of storage.DEVICE_LOCAL_KEYS) merged[k] = localSettings[k];
         let filledGaps = false;
         for (const k of storage.CREDENTIAL_KEYS) {
           if (!merged[k] && localSettings[k]) {
@@ -212,7 +214,7 @@ export async function flush() {
       ...(pushSettings
         ? [(() => {
             const s = storage.getSettings();
-            return put('/api/sync/settings', { settings: s, updatedAt: s.updatedAt || Date.now() });
+            return put('/api/sync/settings', { settings: storage.withoutDeviceLocal(s), updatedAt: s.updatedAt || Date.now() });
           })()]
         : []),
       ...(pushMeals

@@ -80,8 +80,31 @@ describe('local saves', () => {
     storage.saveDailyLog(DATE, log({ water: 1, updatedAt: 1 }));
     expect(storage.getDailyLog(DATE).updatedAt).toBe(Date.now());
 
-    storage.saveSettings({ ...storage.getSettings(), updatedAt: 1 });
+    storage.saveSettings({ ...storage.getSettings(), waterTarget: 9, updatedAt: 1 });
     expect(storage.getSettings().updatedAt).toBe(Date.now());
+  });
+
+  it('keep the API key out of the shared settings record', async () => {
+    const { storage } = await openDevice(memoryStorage());
+    storage.saveSettings({ ...storage.getSettings(), waterTarget: 9 });
+    const before = localStorage.getItem('ww_settings');
+
+    vi.setSystemTime(new Date('2026-11-01T09:00:00'));
+    storage.saveSettings({ ...storage.getSettings(), apiKey: 'sk-ant-this-device' });
+
+    expect(storage.getSettings().apiKey).toBe('sk-ant-this-device');
+    expect(localStorage.getItem('ww_settings')).toBe(before); // untouched, same timestamp
+  });
+
+  it('still find an API key saved inside settings by an older build', async () => {
+    const store = memoryStorage();
+    store.setItem('ww_settings', JSON.stringify({ apiKey: 'sk-ant-from-old-build', updatedAt: 1 }));
+    const { storage } = await openDevice(store);
+    expect(storage.getSettings().apiKey).toBe('sk-ant-from-old-build');
+
+    storage.saveSettings({ ...storage.getSettings(), waterTarget: 9 });
+    expect(storage.getSettings().apiKey).toBe('sk-ant-from-old-build');
+    expect(JSON.parse(store.getItem('ww_settings'))).not.toHaveProperty('apiKey');
   });
 
   it('keep an explicit remote timestamp', async () => {
@@ -131,16 +154,38 @@ describe('sync', () => {
     expect(remote('settings').settings.macroTargets.protein).toBe(210);
   });
 
-  it('keeps a credential the new device entered when the shared copy has none', async () => {
+  it('keeps an Oura credential the new device entered when the shared copy has none', async () => {
     await joinedDevice(memoryStorage(), { waterTarget: 12 });
 
     vi.setSystemTime(new Date('2026-11-01T09:00:00'));
-    const b = await joinedDevice(memoryStorage(), { apiKey: 'sk-ant-device-b' });
+    const b = await joinedDevice(memoryStorage(), { ouraClientId: 'oura-client-b' });
 
     expect(b.storage.getSettings().waterTarget).toBe(12);
-    expect(b.storage.getSettings().apiKey).toBe('sk-ant-device-b');
-    expect(remote('settings').settings.apiKey).toBe('sk-ant-device-b');
+    expect(b.storage.getSettings().ouraClientId).toBe('oura-client-b');
+    expect(remote('settings').settings.ouraClientId).toBe('oura-client-b');
     expect(remote('settings').settings.waterTarget).toBe(12);
+  });
+
+  it('never syncs the API key or the sync key, and each device keeps its own', async () => {
+    // A shared copy written by an older build still carries an API key
+    await kv.put('settings', JSON.stringify({
+      settings: { waterTarget: 12, apiKey: 'sk-ant-legacy', syncKey: SYNC_KEY },
+      updatedAt: Date.now(),
+    }));
+
+    vi.setSystemTime(new Date('2026-11-01T09:00:00'));
+    const a = await joinedDevice(memoryStorage(), { apiKey: 'sk-ant-device-a' });
+    a.storage.saveSettings({ ...a.storage.getSettings(), waterTarget: 6 });
+    await a.sync.flush();
+
+    expect(a.storage.getSettings().apiKey).toBe('sk-ant-device-a');
+    expect(remote('settings').settings.waterTarget).toBe(6);
+    expect(remote('settings').settings).not.toHaveProperty('apiKey');
+    expect(remote('settings').settings).not.toHaveProperty('syncKey');
+
+    const b = await joinedDevice(memoryStorage());
+    expect(b.storage.getSettings().waterTarget).toBe(6);
+    expect(b.storage.getSettings().apiKey).toBe('');
   });
 
   it('still lets a newer settings edit win once both devices are joined', async () => {

@@ -430,7 +430,7 @@ export default function SettingsView({ settings, onUpdate, onReplace }) {
             <a href="https://console.anthropic.com" target="_blank" rel="noreferrer" className="text-brand-500 hover:underline">
               console.anthropic.com
             </a>.
-            Stored in your browser's localStorage only.
+            Stored on this device only and never synced, so enter a key on each device.
           </p>
         </div>
       </Section>

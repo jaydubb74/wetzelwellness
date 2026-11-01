@@ -5,6 +5,7 @@ const KEY = {
   SAVED_MEALS: 'ww_saved_meals',
   SAVED_MEALS_DELETED: 'ww_saved_meals_deleted',
   SYNC_JOINED: 'ww_sync_joined_key',
+  API_KEY: 'ww_api_key',
 };
 
 // ── Default settings ──────────────────────────────────────────────────────────
@@ -33,9 +34,14 @@ const DEFAULT_SETTINGS = {
   syncKey: '',
 };
 
-// Per-device secrets. When a device adopts the shared settings it keeps its
+// Never leave this device via sync: each device has its own Anthropic key,
+// and the sync key is the credential itself.
+export const DEVICE_LOCAL_KEYS = ['apiKey', 'syncKey'];
+
+// Shared Oura credentials (refresh tokens are single-use, so every device
+// needs the latest). When a device adopts the shared settings it keeps its
 // own value for any of these the shared copy is missing.
-export const CREDENTIAL_KEYS = ['apiKey', 'ouraToken', 'ouraClientId', 'ouraClientSecret', 'ouraAuth'];
+export const CREDENTIAL_KEYS = ['ouraToken', 'ouraClientId', 'ouraClientSecret', 'ouraAuth'];
 
 // The user's actual tracking preferences — update when adding a new one.
 const PREFERENCE_KEYS = ['macroTargets', 'supplements', 'exerciseGoals', 'waterTarget'];
@@ -99,19 +105,50 @@ export function getAllLogs() {
 
 // ── Settings ──────────────────────────────────────────────────────────────────
 
-export function getSettings() {
+function getStoredSettings() {
   try {
-    const saved = JSON.parse(localStorage.getItem(KEY.SETTINGS) || '{}');
-    return deepMerge(DEFAULT_SETTINGS, saved);
+    return deepMerge(DEFAULT_SETTINGS, JSON.parse(localStorage.getItem(KEY.SETTINGS) || '{}'));
   } catch {
     return { ...DEFAULT_SETTINGS };
   }
 }
 
-// Same timestamp rule as saveDailyLog.
-export function saveSettings(settings, { updatedAt = Date.now() } = {}) {
-  localStorage.setItem(KEY.SETTINGS, JSON.stringify({ ...settings, updatedAt }));
+export function getSettings() {
+  const settings = getStoredSettings();
+  // The Anthropic key has its own entry so it never syncs (older builds kept
+  // it inside settings; that copy is only a fallback now).
+  const apiKey = localStorage.getItem(KEY.API_KEY);
+  if (apiKey !== null) settings.apiKey = apiKey;
+  return settings;
+}
+
+// Same timestamp rule as saveDailyLog. A local save that changes nothing
+// shared (e.g. only the API key) leaves the synced record and its timestamp
+// alone, so it can't push a stale copy over another device's edits.
+export function saveSettings(settings, { updatedAt } = {}) {
+  const { apiKey = '', ...shared } = settings;
+  localStorage.setItem(KEY.API_KEY, apiKey);
+  if (updatedAt === undefined && sameSharedSettings(shared, getStoredSettings())) return;
+  localStorage.setItem(KEY.SETTINGS, JSON.stringify({ ...shared, updatedAt: updatedAt ?? Date.now() }));
   syncNotifier?.onSettings?.();
+}
+
+function sameSharedSettings(a, b) {
+  const strip = s => {
+    const { apiKey, updatedAt, ...rest } = deepMerge(DEFAULT_SETTINGS, s);
+    return rest;
+  };
+  return deepEqual(strip(a), strip(b));
+}
+
+/** Settings as they should leave this device: without device-local keys. */
+export function withoutDeviceLocal(settings) {
+  return Object.fromEntries(Object.entries(settings).filter(([k]) => !DEVICE_LOCAL_KEYS.includes(k)));
+}
+
+/** Just the tracking preferences from a settings-shaped object. */
+export function pickPreferences(obj) {
+  return Object.fromEntries(PREFERENCE_KEYS.filter(k => k in obj).map(k => [k, obj[k]]));
 }
 
 /** True when tracking preferences are still the built-in defaults. */

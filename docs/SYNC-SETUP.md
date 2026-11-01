@@ -55,8 +55,10 @@ Notes:
   last-write-wins using `updatedAt` timestamps.
 - A device pushes nothing until its first successful pull with the key. If
   its targets/supplements are still the defaults, it adopts the shared
-  settings (keeping any API key / Oura credentials it has that the shared
-  copy lacks) instead of overwriting them.
+  settings (keeping any Oura credentials it has that the shared copy lacks)
+  instead of overwriting them.
+- The Anthropic API key and the sync key never sync: enter an API key on
+  each device. Oura credentials do sync, since refresh tokens are single-use.
 - KV is eventually consistent (~60 s across regions) — fine for one person on
   two devices; just avoid editing the same day on both devices at the same
   moment.
