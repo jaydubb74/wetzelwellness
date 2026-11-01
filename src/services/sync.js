@@ -12,6 +12,7 @@ const PUSH_DEBOUNCE_MS = 2000;
 
 let pendingDates = new Set();
 let settingsDirty = false;
+let mealsDirty = false;
 let pushTimer = null;
 let suspended = false; // true while applying remote data, to avoid echo pushes
 
@@ -51,7 +52,7 @@ export async function pullAll() {
   try {
     const res = await fetch('/api/sync', { headers: headers() });
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Sync failed (${res.status})`);
-    const { logs = {}, settings } = await res.json();
+    const { logs = {}, settings, meals: remoteMeals } = await res.json();
 
     suspended = true;
     try {
@@ -79,11 +80,21 @@ export async function pullAll() {
       } else if ((storage.getSettings().updatedAt || 0) > (settings?.updatedAt || 0)) {
         settingsDirty = true;
       }
+
+      // Saved meals: union-merge local + remote; push back if remote is missing any.
+      const merged = storage.mergeMeals(
+        { meals: storage.getSavedMeals(), deleted: storage.getDeletedMeals() },
+        remoteMeals
+      );
+      storage.writeSavedMeals(merged.meals, merged.deleted);
+      const ids = x => (x?.meals || []).map(m => m.id).sort().join(',');
+      const dels = x => Object.keys(x?.deleted || {}).sort().join(',');
+      if (ids(merged) !== ids(remoteMeals) || dels(merged) !== dels(remoteMeals)) mealsDirty = true;
     } finally {
       suspended = false;
     }
 
-    if (pendingDates.size || settingsDirty) schedulePush();
+    if (pendingDates.size || settingsDirty || mealsDirty) schedulePush();
     setStatus({ state: 'idle', lastSyncedAt: Date.now() });
     return { pulled: true };
   } catch (e) {
@@ -106,6 +117,12 @@ export function notifySettingsSaved() {
   schedulePush();
 }
 
+export function notifyMealsSaved() {
+  if (suspended || !isConfigured()) return;
+  mealsDirty = true;
+  schedulePush();
+}
+
 function schedulePush() {
   clearTimeout(pushTimer);
   pushTimer = setTimeout(flush, PUSH_DEBOUNCE_MS);
@@ -118,8 +135,10 @@ export async function flush() {
   pendingDates.clear();
   const pushSettings = settingsDirty;
   settingsDirty = false;
+  const pushMeals = mealsDirty;
+  mealsDirty = false;
 
-  if (!dates.length && !pushSettings) return;
+  if (!dates.length && !pushSettings && !pushMeals) return;
   setStatus({ state: 'syncing', error: null });
   try {
     const all = storage.getAllLogs();
@@ -143,12 +162,24 @@ export async function flush() {
             }).then(r => { if (!r.ok) throw new Error(`Settings push failed (${r.status})`); });
           })()]
         : []),
+      ...(pushMeals
+        ? [fetch('/api/sync/meals', {
+            method: 'PUT',
+            headers: headers(),
+            body: JSON.stringify({ meals: storage.getSavedMeals(), deleted: storage.getDeletedMeals() }),
+          }).then(async r => {
+            if (!r.ok) throw new Error(`Saved meals push failed (${r.status})`);
+            const { merged } = await r.json();
+            if (merged) storage.writeSavedMeals(merged.meals, merged.deleted);
+          })]
+        : []),
     ]);
     setStatus({ state: 'idle', lastSyncedAt: Date.now() });
   } catch (e) {
     // Re-queue for the next attempt
     dates.forEach(d => pendingDates.add(d));
     if (pushSettings) settingsDirty = true;
+    if (pushMeals) mealsDirty = true;
     setStatus({ state: 'error', error: e.message });
   }
 }
@@ -160,4 +191,4 @@ export async function syncNow() {
 }
 
 // Mirror every local save to KV (debounced).
-storage.setSyncNotifier({ onLog: notifyLogSaved, onSettings: notifySettingsSaved });
+storage.setSyncNotifier({ onLog: notifyLogSaved, onSettings: notifySettingsSaved, onMeals: notifyMealsSaved });

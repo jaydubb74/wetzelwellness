@@ -3,6 +3,7 @@ const KEY = {
   SETTINGS: 'ww_settings',
   NUTRITION_CACHE: 'ww_nutrition_cache',
   SAVED_MEALS: 'ww_saved_meals',
+  SAVED_MEALS_DELETED: 'ww_saved_meals_deleted',
 };
 
 // ── Default settings ──────────────────────────────────────────────────────────
@@ -123,6 +124,34 @@ export function saveNutritionCache(cache) {
 
 // ── Saved / favourite meals ───────────────────────────────────────────────────
 
+export function getDeletedMeals() {
+  try {
+    return JSON.parse(localStorage.getItem(KEY.SAVED_MEALS_DELETED) || '{}');
+  } catch {
+    return {};
+  }
+}
+
+/** Overwrite saved meals + tombstones without notifying sync (used when applying remote data). */
+export function writeSavedMeals(meals, deleted) {
+  localStorage.setItem(KEY.SAVED_MEALS, JSON.stringify(meals));
+  localStorage.setItem(KEY.SAVED_MEALS_DELETED, JSON.stringify(deleted));
+}
+
+/** Union by id, de-dupe by description, drop tombstoned ids. Mirrors the server. */
+export function mergeMeals(a, b) {
+  const deleted = { ...(a?.deleted || {}), ...(b?.deleted || {}) };
+  const byDesc = new Map();
+  for (const m of [...(a?.meals || []), ...(b?.meals || [])]) {
+    if (!m || !m.id || typeof m.description !== 'string' || deleted[m.id]) continue;
+    const k = m.description.toLowerCase();
+    const prev = byDesc.get(k);
+    if (!prev || m.id < prev.id) byDesc.set(k, m);
+  }
+  const num = m => Number(String(m.id).replace(/\D/g, '')) || 0;
+  return { meals: [...byDesc.values()].sort((x, y) => num(y) - num(x)), deleted };
+}
+
 export function getSavedMeals() {
   try {
     return JSON.parse(localStorage.getItem(KEY.SAVED_MEALS) || '[]');
@@ -147,6 +176,7 @@ export function saveFavoriteMeal({ description, macros }) {
     ...meals,
   ];
   localStorage.setItem(KEY.SAVED_MEALS, JSON.stringify(updated));
+  syncNotifier?.onMeals?.();
   return updated;
 }
 
@@ -156,6 +186,8 @@ export function saveFavoriteMeal({ description, macros }) {
 export function removeFavoriteMeal(id) {
   const updated = getSavedMeals().filter(m => m.id !== id);
   localStorage.setItem(KEY.SAVED_MEALS, JSON.stringify(updated));
+  localStorage.setItem(KEY.SAVED_MEALS_DELETED, JSON.stringify({ ...getDeletedMeals(), [id]: Date.now() }));
+  syncNotifier?.onMeals?.();
   return updated;
 }
 

@@ -9,6 +9,7 @@
  *   GET  /api/sync               → { logs: { "YYYY-MM-DD": { log, updatedAt } }, settings }
  *   PUT  /api/sync/log/:date     → body { log, updatedAt }
  *   PUT  /api/sync/settings      → body { settings, updatedAt }
+ *   PUT  /api/sync/meals         → body { meals, deleted } (union-merged; returns merged)
  *
  * Conflict handling: writes are skipped if KV already holds a newer updatedAt
  * (last-write-wins per date).
@@ -19,6 +20,21 @@ function json(data, status = 200) {
     status,
     headers: { 'Content-Type': 'application/json' },
   });
+}
+
+// Saved meals merge as a union (by id, de-duplicated by description) minus
+// tombstoned ids, so two devices adding meals never clobber each other.
+function mergeMeals(a, b) {
+  const deleted = { ...(a?.deleted || {}), ...(b?.deleted || {}) };
+  const byDesc = new Map();
+  for (const m of [...(a?.meals || []), ...(b?.meals || [])]) {
+    if (!m || !m.id || typeof m.description !== 'string' || deleted[m.id]) continue;
+    const k = m.description.toLowerCase();
+    const prev = byDesc.get(k);
+    if (!prev || m.id < prev.id) byDesc.set(k, m);
+  }
+  const num = m => Number(String(m.id).replace(/\D/g, '')) || 0;
+  return { meals: [...byDesc.values()].sort((x, y) => num(y) - num(x)), deleted };
 }
 
 export async function onRequest(context) {
@@ -52,7 +68,8 @@ export async function onRequest(context) {
     } while (cursor);
 
     const settings = await env.WW_KV.get('settings', 'json');
-    return json({ logs, settings });
+    const meals = await env.WW_KV.get('meals', 'json');
+    return json({ logs, settings, meals });
   }
 
   if (request.method === 'PUT' && path[0] === 'log' && /^\d{4}-\d{2}-\d{2}$/.test(path[1] || '')) {
@@ -80,6 +97,17 @@ export async function onRequest(context) {
     }
     await env.WW_KV.put('settings', JSON.stringify({ settings: body.settings, updatedAt: body.updatedAt }));
     return json({ ok: true });
+  }
+
+  if (request.method === 'PUT' && path[0] === 'meals') {
+    const body = await request.json().catch(() => null);
+    if (!body || !Array.isArray(body.meals) || typeof body.deleted !== 'object' || body.deleted === null) {
+      return json({ error: 'Expected { meals, deleted }' }, 400);
+    }
+    const existing = await env.WW_KV.get('meals', 'json');
+    const merged = mergeMeals(existing, body);
+    await env.WW_KV.put('meals', JSON.stringify(merged));
+    return json({ ok: true, merged });
   }
 
   return json({ error: 'Not found' }, 404);
