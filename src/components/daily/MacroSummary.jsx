@@ -17,7 +17,7 @@ function MacroBar({ label, value, target, color, status }) {
         <span className={`text-xs font-semibold ${valueColor}`}>
           {status && <span className="font-medium mr-1.5">{status.text}</span>}
           {value}
-          <span className="text-slate-400 font-normal">/{target}g</span>
+          <span className="text-slate-500 font-normal">/{target}g</span>
         </span>
       </div>
       <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
@@ -46,7 +46,7 @@ export default function MacroSummary({ meals, targets, final = false }) {
     <div className="card">
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-sm font-semibold text-slate-900">Daily Macros</h2>
-        <span className="text-xs text-slate-400 bg-slate-50 px-2 py-0.5 rounded-full">
+        <span className="text-xs text-slate-500 bg-slate-50 px-2 py-0.5 rounded-full">
           {totals.calories} / {targets.calories} kcal
         </span>
       </div>

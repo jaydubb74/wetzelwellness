@@ -14,15 +14,16 @@ export default function Navigation({ activeTab, onTabChange }) {
             <button
               key={tab.id}
               onClick={() => onTabChange(tab.id)}
+              aria-current={active ? 'page' : undefined}
               className={`
                 flex items-center gap-1.5 px-4 py-3 text-sm font-medium border-b-2 transition-colors duration-150
                 ${active
-                  ? 'border-brand-500 text-brand-600'
-                  : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+                  ? 'border-brand-600 text-brand-700'
+                  : 'border-transparent text-slate-600 hover:text-slate-800 hover:border-slate-300'
                 }
               `}
             >
-              <span className="text-base leading-none">{tab.icon}</span>
+              <span className="text-base leading-none" aria-hidden="true">{tab.icon}</span>
               {tab.label}
             </button>
           );

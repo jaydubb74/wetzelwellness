@@ -14,7 +14,7 @@ function ComplianceCard({ label, icon, pct, detail, description }) {
         <p className="text-lg mb-1">{icon}</p>
         <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{label}</p>
         <p className="text-2xl font-bold text-slate-300 mt-1">–</p>
-        <p className="text-xs text-slate-400 mt-0.5">No data yet</p>
+        <p className="text-xs text-slate-500 mt-0.5">No data yet</p>
       </div>
     );
   }
@@ -31,14 +31,14 @@ function ComplianceCard({ label, icon, pct, detail, description }) {
       <div className="mt-2 h-1.5 bg-slate-100 rounded-full overflow-hidden">
         <div className={`h-full rounded-full macro-bar ${barColor}`} style={{ width: `${pct}%` }} />
       </div>
-      {description && <p className="text-[11px] text-slate-400 mt-1.5">{description}</p>}
+      {description && <p className="text-[11px] text-slate-500 mt-1.5">{description}</p>}
     </div>
   );
 }
 
 function DotLegend() {
   return (
-    <div className="flex items-center gap-3 text-xs text-slate-400">
+    <div className="flex items-center gap-3 text-xs text-slate-500">
       <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-brand-500 inline-block"/>Good (≥80%)</span>
       <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block"/>Partial</span>
       <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-red-400 inline-block"/>Missed</span>
@@ -47,7 +47,7 @@ function DotLegend() {
   );
 }
 
-function CalendarGrid({ dates, daily, onSelect, selectedDate, onNavigateToDate }) {
+function CalendarGrid({ dates, daily, onSelect, selectedDate }) {
   const tod = today();
 
   return (
@@ -55,7 +55,7 @@ function CalendarGrid({ dates, daily, onSelect, selectedDate, onNavigateToDate }
       {/* Day-of-week headers */}
       <div className="grid grid-cols-7 gap-1 mb-1">
         {['S','M','T','W','T','F','S'].map((d, i) => (
-          <div key={i} className="text-center text-[10px] font-semibold text-slate-400 py-1">{d}</div>
+          <div key={i} className="text-center text-[10px] font-semibold text-slate-500 py-1">{d}</div>
         ))}
       </div>
 
@@ -68,9 +68,11 @@ function CalendarGrid({ dates, daily, onSelect, selectedDate, onNavigateToDate }
         for (const date of dates) {
           const data = daily[date];
           let dotColor = 'bg-slate-200';
+          let status = 'no log';
           if (data) {
             const avg = (data.protein.score + data.supplements + data.hydration) / 3;
             dotColor = avg >= 0.8 ? 'bg-brand-500' : avg >= 0.5 ? 'bg-amber-400' : 'bg-red-400';
+            status = avg >= 0.8 ? 'good' : avg >= 0.5 ? 'partial' : 'missed';
           }
 
           const isToday = date === tod;
@@ -79,20 +81,18 @@ function CalendarGrid({ dates, daily, onSelect, selectedDate, onNavigateToDate }
           cells.push(
             <button
               key={date}
-              onClick={() => {
-                onSelect(date);
-                if (onNavigateToDate) onNavigateToDate(date);
-              }}
+              onClick={() => onSelect(date)}
+              aria-pressed={isSelected}
+              aria-label={`${formatShort(date)}: ${status}`}
               className={`
-                flex flex-col items-center gap-0.5 py-1.5 rounded-xl transition-colors
+                flex flex-col items-center gap-0.5 py-2 rounded-xl transition-colors
                 ${isSelected ? 'bg-brand-50 ring-1 ring-brand-300' : 'hover:bg-slate-50'}
               `}
-              title={`Open ${date} in Daily view`}
             >
-              <span className={`text-[11px] font-medium ${isToday ? 'text-brand-600' : 'text-slate-600'}`}>
+              <span className={`text-[11px] font-medium ${isToday ? 'text-brand-700' : 'text-slate-600'}`}>
                 {new Date(date + 'T00:00:00').getDate()}
               </span>
-              <span className={`w-2 h-2 rounded-full ${dotColor}`} />
+              <span className={`w-2 h-2 rounded-full ${dotColor}`} aria-hidden="true" />
             </button>
           );
         }
@@ -292,7 +292,7 @@ export default function ProgressionView({ settings, onNavigateToDate }) {
               key={p}
               onClick={() => { setPeriod(p); setAnchor(today()); }}
               className={`px-4 py-2 font-medium capitalize transition-colors ${
-                period === p ? 'bg-brand-500 text-white' : 'text-slate-600 hover:bg-slate-50'
+                period === p ? 'bg-brand-700 text-white' : 'text-slate-600 hover:bg-slate-50'
               }`}
             >
               {p}
@@ -301,9 +301,9 @@ export default function ProgressionView({ settings, onNavigateToDate }) {
         </div>
 
         <div className="flex items-center gap-2">
-          <button onClick={prev} className="btn-ghost px-2">←</button>
+          <button onClick={prev} className="btn-ghost px-2" aria-label={`Previous ${period}`}>←</button>
           <span className="text-xs text-slate-600 font-medium min-w-[120px] text-center">{periodLabel}</span>
-          <button onClick={next} className="btn-ghost px-2">→</button>
+          <button onClick={next} className="btn-ghost px-2" aria-label={`Next ${period}`}>→</button>
         </div>
       </div>
 
@@ -340,7 +340,7 @@ export default function ProgressionView({ settings, onNavigateToDate }) {
       </div>
 
       {tracked === 0 && (
-        <div className="card text-center py-8 text-slate-400">
+        <div className="card text-center py-8 text-slate-500">
           <p className="text-3xl mb-2">📋</p>
           <p className="text-sm">No logs found for this period.</p>
           <p className="text-xs mt-1">Start logging on the Daily tab to see your compliance here.</p>
@@ -370,37 +370,48 @@ export default function ProgressionView({ settings, onNavigateToDate }) {
             daily={daily}
             onSelect={setSelectedDate}
             selectedDate={selectedDate}
-            onNavigateToDate={onNavigateToDate}
           />
 
           {/* Selected day detail */}
-          {daily[selectedDate] && (
+          {dates.includes(selectedDate) && (
             <div className="mt-4 pt-3 border-t border-slate-100">
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
-                {formatShort(selectedDate)}
-              </p>
-              <div className="flex gap-4">
-                {(() => {
-                  const { protein } = daily[selectedDate];
-                  return (
-                    <div className="text-center">
-                      <p className={`text-lg font-bold ${BAND_TEXT[protein.band] || 'text-slate-400'}`}>
-                        {protein.band ? formatVariance(protein.variance) : '–'}
-                      </p>
-                      <p className="text-[11px] text-slate-400">Protein</p>
-                    </div>
-                  );
-                })()}
-                {[
-                  { label: 'Supplements',  value: daily[selectedDate].supplements,  color: 'text-sky-600' },
-                  { label: 'Hydration',    value: daily[selectedDate].hydration,    color: 'text-amber-600' },
-                ].map(item => (
-                  <div key={item.label} className="text-center">
-                    <p className={`text-lg font-bold ${item.color}`}>{Math.round(item.value * 100)}%</p>
-                    <p className="text-[11px] text-slate-400">{item.label}</p>
-                  </div>
-                ))}
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
+                  {formatShort(selectedDate)}
+                </p>
+                <button
+                  onClick={() => onNavigateToDate(selectedDate)}
+                  className="text-xs font-medium text-brand-700 hover:text-brand-600"
+                >
+                  Open in Daily →
+                </button>
               </div>
+              {daily[selectedDate] ? (
+                <div className="flex gap-4">
+                  {(() => {
+                    const { protein } = daily[selectedDate];
+                    return (
+                      <div className="text-center">
+                        <p className={`text-lg font-bold ${BAND_TEXT[protein.band] || 'text-slate-500'}`}>
+                          {protein.band ? formatVariance(protein.variance) : '–'}
+                        </p>
+                        <p className="text-[11px] text-slate-500">Protein vs goal</p>
+                      </div>
+                    );
+                  })()}
+                  {[
+                    { label: 'Supplements',  value: daily[selectedDate].supplements,  color: 'text-sky-700' },
+                    { label: 'Hydration',    value: daily[selectedDate].hydration,    color: 'text-amber-700' },
+                  ].map(item => (
+                    <div key={item.label} className="text-center">
+                      <p className={`text-lg font-bold ${item.color}`}>{Math.round(item.value * 100)}%</p>
+                      <p className="text-[11px] text-slate-500">{item.label}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-slate-500">Nothing logged by hand this day.</p>
+              )}
             </div>
           )}
         </div>
@@ -410,7 +421,7 @@ export default function ProgressionView({ settings, onNavigateToDate }) {
       <div className="card">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-semibold text-slate-800">{period === 'week' ? "This Week's Exercise" : "Month Exercise"}</h3>
-          <span className="text-xs text-slate-400">{periodLabel}</span>
+          <span className="text-xs text-slate-500">{periodLabel}</span>
         </div>
         <ExerciseProgress goals={settings.exerciseGoals} exercise={exercise} />
       </div>

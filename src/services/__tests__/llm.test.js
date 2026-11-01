@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { applySettingsIntent } from '../llm.js';
+import { applySettingsIntent, parseMealMacros, saveMealCorrection } from '../llm.js';
 
 const realFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = realFetch; });
@@ -32,5 +32,26 @@ describe('applySettingsIntent', () => {
       expect(sentBody).not.toContain(secret);
     }
     expect(patch).toEqual({ macroTargets: { protein: 200 } });
+  });
+});
+
+describe('saveMealCorrection', () => {
+  it('returns corrected macros the next time the meal is typed, without calling the model', async () => {
+    const store = new Map();
+    globalThis.localStorage = { getItem: k => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) };
+    globalThis.fetch = async () => { throw new Error('should not call the model'); };
+
+    saveMealCorrection('Chicken Burrito Bowl', { protein: 48, fat: 20, carbs: 70, calories: 650 });
+    const result = await parseMealMacros('  chicken   burrito bowl ');
+
+    expect(result).toEqual({ protein: 48, fat: 20, carbs: 70, calories: 650, fromCache: true });
+  });
+
+  it('keeps corrections to built-in items', async () => {
+    const store = new Map();
+    globalThis.localStorage = { getItem: k => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) };
+
+    saveMealCorrection('2 eggs', { protein: 14, fat: 10, carbs: 0, calories: 140 });
+    expect((await parseMealMacros('2 eggs')).protein).toBe(14);
   });
 });

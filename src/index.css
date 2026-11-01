@@ -30,8 +30,8 @@
   }
 
   .btn-primary {
-    @apply inline-flex items-center gap-2 bg-brand-500 text-white text-sm font-medium
-           px-4 py-2 rounded-xl hover:bg-brand-600 active:bg-brand-700
+    @apply inline-flex items-center gap-2 bg-brand-700 text-white text-sm font-medium
+           px-4 py-2 rounded-xl hover:bg-brand-800 active:bg-brand-800
            transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed;
   }
 
@@ -42,8 +42,8 @@
   }
 
   .btn-ghost {
-    @apply inline-flex items-center gap-1.5 text-slate-500 text-sm font-medium
-           px-3 py-1.5 rounded-lg hover:bg-slate-100 hover:text-slate-700
+    @apply inline-flex items-center gap-1.5 text-slate-600 text-sm font-medium
+           px-3 py-1.5 rounded-lg hover:bg-slate-100 hover:text-slate-800
            transition-colors duration-150;
   }
 
@@ -84,3 +84,12 @@
 /* Animated macro bar */
 @keyframes grow { from { width: 0; } }
 .macro-bar { animation: grow 0.5s ease-out forwards; }
+
+/* Respect the system "reduce motion" setting */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

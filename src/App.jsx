@@ -3,6 +3,7 @@ import Navigation from './components/Navigation.jsx';
 import DailyView from './components/daily/DailyView.jsx';
 import ProgressionView from './components/progression/ProgressionView.jsx';
 import SettingsView from './components/settings/SettingsView.jsx';
+import SyncStatus from './components/SyncStatus.jsx';
 import { useSettings } from './hooks/useSettings.js';
 import { today, formatFull } from './utils/dates.js';
 
@@ -25,13 +26,16 @@ export default function App() {
       >
         <header className="border-b border-slate-100 px-5 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <span className="text-lg">🌿</span>
+            <span className="text-lg" aria-hidden="true">🌿</span>
             <span className="font-semibold text-slate-900 text-base tracking-tight">Wetzel Wellness</span>
           </div>
-          <span className="text-xs text-slate-400 hidden sm:block">
+          <span className="text-xs text-slate-500 hidden sm:block">
             {formatFull(today())}
           </span>
-          <div className="w-[120px] hidden sm:block" /> {/* spacer to center date on desktop */}
+          {/* Fixed width keeps the date centred on desktop */}
+          <div className="sm:w-[140px] flex justify-end">
+            <SyncStatus onOpenSettings={() => setActiveTab('settings')} />
+          </div>
         </header>
         <Navigation activeTab={activeTab} onTabChange={setActiveTab} />
       </div>

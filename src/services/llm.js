@@ -27,6 +27,18 @@ export async function parseMealMacros(description) {
   return { ...result, fromCache: false };
 }
 
+/**
+ * Remembers corrected macros for a description, so the next time it's typed
+ * the corrected values come back instead of the original estimate.
+ */
+export function saveMealCorrection(description, macros) {
+  const { protein, fat, carbs, calories } = macros;
+  storage.saveNutritionCache({
+    ...storage.getNutritionCache(),
+    [cacheKey(description)]: { protein, fat, carbs, calories },
+  });
+}
+
 // Reject malformed LLM output before it reaches the log or the cache
 function validateMacros(raw) {
   const toInt = (v) => {

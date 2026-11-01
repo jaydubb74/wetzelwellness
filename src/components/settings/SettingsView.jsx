@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { applySettingsIntent } from '../../services/llm.js';
 import * as sync from '../../services/sync.js';
 import * as oura from '../../services/oura.js';
@@ -21,6 +21,40 @@ function Section({ title, children }) {
   );
 }
 
+// ── Number field ──────────────────────────────────────────────────────────────
+
+// Saves on blur/Enter rather than every keystroke, so a field can be cleared
+// and retyped (saving each keystroke snapped an empty field back to a default,
+// turning "10" into "810"). Out-of-range or empty input reverts.
+function NumberField({ value, onCommit, min = 0, max, ...props }) {
+  const [text, setText] = useState(String(value ?? ''));
+  useEffect(() => setText(String(value ?? '')), [value]);
+
+  function commit() {
+    const n = parseInt(text, 10);
+    if (Number.isFinite(n) && n >= min && (max == null || n <= max)) {
+      if (n !== value) onCommit(n);
+      setText(String(n));
+    } else {
+      setText(String(value ?? ''));
+    }
+  }
+
+  return (
+    <input
+      type="number"
+      inputMode="numeric"
+      min={min}
+      max={max}
+      value={text}
+      onChange={e => setText(e.target.value)}
+      onBlur={commit}
+      onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+      {...props}
+    />
+  );
+}
+
 // ── Macro Targets ─────────────────────────────────────────────────────────────
 
 function MacroTargets({ targets, onChange }) {
@@ -35,16 +69,15 @@ function MacroTargets({ targets, onChange }) {
     <div className="grid grid-cols-2 gap-3">
       {fields.map(f => (
         <div key={f.key}>
-          <label className="label">{f.label}</label>
+          <label className="label" htmlFor={`macro-${f.key}`}>{f.label}</label>
           <div className="relative">
-            <input
-              type="number"
-              min="0"
+            <NumberField
+              id={`macro-${f.key}`}
               className="input pr-10"
               value={targets[f.key]}
-              onChange={e => onChange({ ...targets, [f.key]: parseInt(e.target.value, 10) || 0 })}
+              onCommit={n => onChange({ ...targets, [f.key]: n })}
             />
-            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 pointer-events-none">
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-500 pointer-events-none">
               {f.unit}
             </span>
           </div>
@@ -95,15 +128,17 @@ function SupplementManager({ supplements, onChange }) {
             className="checkbox-brand shrink-0"
             checked={supp.active}
             onChange={() => handleToggleActive(supp.id)}
+            aria-label={`Track ${supp.name}`}
             title="Toggle active"
           />
-          <span className={`text-sm flex-1 ${supp.active ? 'text-slate-800' : 'text-slate-400 line-through'}`}>
+          <span className={`text-sm flex-1 ${supp.active ? 'text-slate-800' : 'text-slate-500 line-through'}`}>
             {supp.name}
           </span>
           <select
             value={supp.timing}
             onChange={e => handleTimingChange(supp.id, e.target.value)}
-            className="text-xs border border-slate-200 rounded-lg px-2 py-1 text-slate-500 bg-white focus:outline-none focus:ring-1 focus:ring-brand-400"
+            aria-label={`When to take ${supp.name}`}
+            className="text-xs border border-slate-200 rounded-lg px-2 py-1 text-slate-600 bg-white focus:outline-none focus:ring-1 focus:ring-brand-400"
           >
             {TIMING_OPTIONS.map(o => (
               <option key={o.value} value={o.value}>{o.label}</option>
@@ -111,7 +146,8 @@ function SupplementManager({ supplements, onChange }) {
           </select>
           <button
             onClick={() => handleRemove(supp.id)}
-            className="text-slate-300 hover:text-red-400 transition-colors p-1 rounded"
+            className="text-slate-500 hover:text-red-500 transition-colors p-2 rounded min-w-[40px] min-h-[40px]"
+            aria-label={`Remove ${supp.name}`}
             title="Remove"
           >✕</button>
         </div>
@@ -123,12 +159,14 @@ function SupplementManager({ supplements, onChange }) {
             autoFocus
             className="input text-sm flex-1"
             placeholder="Supplement name"
+            aria-label="Supplement name"
             value={form.name}
             onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
           />
           <select
             value={form.timing}
             onChange={e => setForm(f => ({ ...f, timing: e.target.value }))}
+            aria-label="When to take it"
             className="text-sm border border-slate-200 rounded-xl px-3 py-2 text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-brand-400"
           >
             {TIMING_OPTIONS.map(o => (
@@ -169,17 +207,18 @@ function ExerciseGoals({ goals, onChange }) {
               value={g.label}
               onChange={e => onChange({ ...goals, [cat.id]: { ...g, label: e.target.value } })}
               placeholder="Activity label"
+              aria-label="Goal name"
             />
             <div className="flex items-center gap-1.5 shrink-0">
-              <input
-                type="number"
-                min="1"
-                max="7"
+              <NumberField
+                min={1}
+                max={7}
                 className="input text-sm w-16 text-center"
+                aria-label={`${g.label} sessions per week`}
                 value={g.target}
-                onChange={e => onChange({ ...goals, [cat.id]: { ...g, target: parseInt(e.target.value, 10) || 1 } })}
+                onCommit={n => onChange({ ...goals, [cat.id]: { ...g, target: n } })}
               />
-              <span className="text-xs text-slate-400 whitespace-nowrap">×/week</span>
+              <span className="text-xs text-slate-500 whitespace-nowrap">×/week</span>
             </div>
           </div>
         );
@@ -224,7 +263,7 @@ function AIAssistant({ settings, onApply }) {
       <p className="text-xs text-slate-500">
         Describe a change in plain English and the AI will update your settings.
         <br />
-        <span className="text-slate-400">
+        <span className="text-slate-500">
           e.g. "Set my protein target to 200g" · "Add CoQ10 to morning supplements" · "Change zone 2 goal to 4 sessions"
         </span>
       </p>
@@ -233,6 +272,7 @@ function AIAssistant({ settings, onApply }) {
         <input
           className="input text-sm flex-1"
           placeholder="Describe a settings change..."
+          aria-label="Describe a settings change"
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && !loading && handleAsk()}
@@ -297,8 +337,9 @@ function SyncSettings({ settings, onUpdate, markSaved }) {
       <div className="space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label className="label">Oura Client ID</label>
+            <label className="label" htmlFor="oura-client-id">Oura Client ID</label>
             <input
+              id="oura-client-id"
               className="input text-sm font-mono"
               placeholder="From your Oura application"
               value={settings.ouraClientId || ''}
@@ -306,8 +347,9 @@ function SyncSettings({ settings, onUpdate, markSaved }) {
             />
           </div>
           <div>
-            <label className="label">Oura Client Secret</label>
+            <label className="label" htmlFor="oura-client-secret">Oura Client Secret</label>
             <input
+              id="oura-client-secret"
               type="password"
               className="input text-sm font-mono"
               placeholder="Client secret"
@@ -349,7 +391,7 @@ function SyncSettings({ settings, onUpdate, markSaved }) {
             <span className="text-xs text-red-500">{ouraTest}</span>
           )}
         </div>
-        <p className="text-xs text-slate-400">
+        <p className="text-xs text-slate-500">
           Pulls daily sleep and readiness. Create an application at{' '}
           <a href="https://cloud.ouraring.com/oauth/applications" target="_blank" rel="noreferrer" className="text-brand-500 hover:underline">
             cloud.ouraring.com
@@ -360,9 +402,10 @@ function SyncSettings({ settings, onUpdate, markSaved }) {
       </div>
 
       <div>
-        <label className="label">Device Sync Key</label>
+        <label className="label" htmlFor="sync-key">Device Sync Key</label>
         <div className="flex gap-2">
           <input
+            id="sync-key"
             type="password"
             className="input text-sm font-mono flex-1"
             placeholder="Shared passphrase for cross-device sync"
@@ -380,10 +423,10 @@ function SyncSettings({ settings, onUpdate, markSaved }) {
         <p className="text-xs mt-1.5">
           {syncStatus.state === 'error' && <span className="text-red-500">{syncStatus.error}</span>}
           {syncStatus.state !== 'error' && syncStatus.lastSyncedAt && (
-            <span className="text-slate-400">Last synced {new Date(syncStatus.lastSyncedAt).toLocaleTimeString()}</span>
+            <span className="text-slate-500">Last synced {new Date(syncStatus.lastSyncedAt).toLocaleTimeString()}</span>
           )}
           {syncStatus.state !== 'error' && !syncStatus.lastSyncedAt && (
-            <span className="text-slate-400">
+            <span className="text-slate-500">
               Enter the same key on each device to share one dataset. Must match the SYNC_KEY secret on Cloudflare.
             </span>
           )}
@@ -397,10 +440,14 @@ function SyncSettings({ settings, onUpdate, markSaved }) {
 
 export default function SettingsView({ settings, onUpdate, onReplace }) {
   const [saved, setSaved] = useState(false);
+  const savedTimer = useRef(null);
 
+  // One toast that stays up while you keep editing, rather than a new timer
+  // (and flicker) per keystroke
   function markSaved() {
     setSaved(true);
-    setTimeout(() => setSaved(false), 1500);
+    clearTimeout(savedTimer.current);
+    savedTimer.current = setTimeout(() => setSaved(false), 1500);
   }
 
   function handleApplyAIPatch(patch) {
@@ -417,15 +464,16 @@ export default function SettingsView({ settings, onUpdate, onReplace }) {
       {/* API Key */}
       <Section title="🔑 Anthropic API Key">
         <div>
-          <label className="label">API Key</label>
+          <label className="label" htmlFor="api-key">API Key</label>
           <input
+            id="api-key"
             type="password"
             className="input text-sm font-mono"
             placeholder="sk-ant-..."
             value={settings.apiKey || ''}
             onChange={e => { onUpdate({ apiKey: e.target.value }); markSaved(); }}
           />
-          <p className="text-xs text-slate-400 mt-1.5">
+          <p className="text-xs text-slate-500 mt-1.5">
             Used for meal macro parsing via Claude Haiku. Get yours at{' '}
             <a href="https://console.anthropic.com" target="_blank" rel="noreferrer" className="text-brand-500 hover:underline">
               console.anthropic.com
@@ -451,15 +499,15 @@ export default function SettingsView({ settings, onUpdate, onReplace }) {
       {/* Supplements */}
       <Section title="💊 Supplements, Vitamins & Hydration">
         <div>
-          <label className="label">Water Target</label>
+          <label className="label" htmlFor="water-target">Water Target</label>
           <div className="flex items-center gap-2 mb-4">
-            <input
-              type="number"
-              min="1"
-              max="20"
+            <NumberField
+              id="water-target"
+              min={1}
+              max={20}
               className="input text-sm w-20"
               value={settings.waterTarget}
-              onChange={e => { onUpdate({ waterTarget: parseInt(e.target.value, 10) || 8 }); markSaved(); }}
+              onCommit={n => { onUpdate({ waterTarget: n }); markSaved(); }}
             />
             <span className="text-sm text-slate-500">glasses / day</span>
           </div>
@@ -484,11 +532,13 @@ export default function SettingsView({ settings, onUpdate, onReplace }) {
       </Section>
 
       {/* Save indicator */}
-      {saved && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-xs px-4 py-2 rounded-full shadow-lg transition-opacity">
-          ✓ Settings saved
-        </div>
-      )}
+      <div role="status" aria-live="polite">
+        {saved && (
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-xs px-4 py-2 rounded-full shadow-lg transition-opacity">
+            ✓ Settings saved
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -1,13 +1,32 @@
 import { useState, useRef, useEffect } from 'react';
-import { parseMealMacros } from '../../services/llm.js';
+import { parseMealMacros, saveMealCorrection } from '../../services/llm.js';
 import * as storage from '../../services/storage.js';
+import { useSavedMeals } from '../../hooks/useSavedMeals.js';
+
+const MACRO_FIELDS = [
+  { key: 'protein',  label: 'Protein',  unit: 'g' },
+  { key: 'fat',      label: 'Fat',      unit: 'g' },
+  { key: 'carbs',    label: 'Carbs',    unit: 'g' },
+  { key: 'calories', label: 'Calories', unit: 'kcal' },
+];
+const PORTIONS = [0.5, 1, 1.5, 2];
+
+function toMacros(values, multiplier = 1) {
+  return Object.fromEntries(MACRO_FIELDS.map(({ key }) => {
+    const n = Number(values[key]);
+    return [key, Number.isFinite(n) && n >= 0 ? Math.round(n * multiplier) : 0];
+  }));
+}
 
 export default function MealLogger({ timeBlock, meals, onAdd, onRemove }) {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  // { description, original: macros, fromCache, breakdown } while confirming
   const [pending, setPending] = useState(null);
+  const [edits, setEdits] = useState({});    // macro field → string, editable
+  const [portion, setPortion] = useState(1);
   const [error, setError] = useState('');
-  const [savedMeals, setSavedMeals] = useState(() => storage.getSavedMeals());
+  const savedMeals = useSavedMeals();
   const [justSaved, setJustSaved] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const wrapperRef = useRef(null);
@@ -38,7 +57,10 @@ export default function MealLogger({ timeBlock, meals, onAdd, onRemove }) {
     setDropdownOpen(false);
     try {
       const result = await parseMealMacros(desc);
-      setPending({ description: desc, macros: result, breakdown: result.breakdown || [] });
+      const original = toMacros(result);
+      setPending({ description: desc, original, fromCache: result.fromCache, breakdown: result.breakdown || [] });
+      setEdits(Object.fromEntries(MACRO_FIELDS.map(({ key }) => [key, String(original[key])])));
+      setPortion(1);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -48,36 +70,45 @@ export default function MealLogger({ timeBlock, meals, onAdd, onRemove }) {
 
   // ── Confirm / discard analyzed result ───────────────────────────────────────
 
-  function handleConfirm() {
-    if (!pending) return;
-    onAdd({ timeBlock, description: pending.description, macros: pending.macros });
+  // The meal as it will be logged: edited values × portion
+  function finalMeal() {
+    const perServing = toMacros(edits);
+    // Remember hand corrections (per serving) for next time this is typed
+    if (MACRO_FIELDS.some(({ key }) => perServing[key] !== pending.original[key])) {
+      saveMealCorrection(pending.description, perServing);
+    }
+    return {
+      description: portion === 1 ? pending.description : `${pending.description} (×${portion})`,
+      macros: toMacros(perServing, portion),
+    };
+  }
+
+  function reset() {
     setPending(null);
     setInput('');
     setError('');
   }
 
+  function handleConfirm() {
+    if (!pending) return;
+    onAdd({ timeBlock, ...finalMeal() });
+    reset();
+  }
+
   function handleDiscard() {
-    setPending(null);
-    setInput('');
+    reset();
   }
 
   // ── Save as favourite (+ add to log) ────────────────────────────────────────
 
   function handleSaveAndAdd() {
     if (!pending) return;
-    const updated = storage.saveFavoriteMeal({
-      description: pending.description,
-      macros: {
-        protein:  pending.macros.protein,
-        fat:      pending.macros.fat,
-        carbs:    pending.macros.carbs,
-        calories: pending.macros.calories,
-      },
-    });
-    setSavedMeals(updated);
+    const meal = finalMeal();
+    storage.saveFavoriteMeal(meal);
     setJustSaved(true);
     setTimeout(() => setJustSaved(false), 1800);
-    handleConfirm();
+    onAdd({ timeBlock, ...meal });
+    reset();
   }
 
   // ── Quick-add from saved meals ───────────────────────────────────────────────
@@ -90,14 +121,16 @@ export default function MealLogger({ timeBlock, meals, onAdd, onRemove }) {
 
   function handleRemoveFavorite(id, e) {
     e.stopPropagation();
-    const updated = storage.removeFavoriteMeal(id);
-    setSavedMeals(updated);
+    storage.removeFavoriteMeal(id);
   }
 
   function handleKeyDown(e) {
     if (e.key === 'Enter' && !loading) handleAnalyze();
-    if (e.key === 'Escape') { setDropdownOpen(false); handleDiscard(); }
+    // Escape just closes the suggestions; what you typed stays
+    if (e.key === 'Escape') setDropdownOpen(false);
   }
+
+  const shown = pending ? toMacros(edits, portion) : null;
 
   return (
     <div className="space-y-2">
@@ -106,7 +139,7 @@ export default function MealLogger({ timeBlock, meals, onAdd, onRemove }) {
         <div key={meal.id} className="flex items-start gap-2 group">
           <div className="flex-1 bg-slate-50 rounded-xl px-3 py-2">
             <p className="text-sm text-slate-800 font-medium">{meal.description}</p>
-            <p className="text-xs text-slate-400 mt-0.5">
+            <p className="text-xs text-slate-500 mt-0.5">
               P: {meal.macros?.protein ?? '–'}g &nbsp;·&nbsp;
               F: {meal.macros?.fat ?? '–'}g &nbsp;·&nbsp;
               C: {meal.macros?.carbs ?? '–'}g &nbsp;·&nbsp;
@@ -115,7 +148,8 @@ export default function MealLogger({ timeBlock, meals, onAdd, onRemove }) {
           </div>
           <button
             onClick={() => onRemove(meal.id)}
-            className="text-slate-300 hover:text-red-400 transition-colors p-2 -m-1 rounded-lg min-w-[36px] min-h-[36px]"
+            className="text-slate-500 hover:text-red-500 transition-colors p-2 -m-1 rounded-lg min-w-[44px] min-h-[44px]"
+            aria-label={`Remove ${meal.description}`}
             title="Remove"
           >
             ✕
@@ -125,12 +159,12 @@ export default function MealLogger({ timeBlock, meals, onAdd, onRemove }) {
 
       {/* ── Pending confirmation card ──────────────────────────────────────── */}
       {pending && (
-        <div className="bg-brand-50 border border-brand-200 rounded-xl p-3 space-y-2">
+        <div className="bg-brand-50 border border-brand-200 rounded-xl p-3 space-y-3">
           <div className="flex justify-between items-start">
             <p className="text-sm font-medium text-slate-800">{pending.description}</p>
-            {pending.macros.fromCache && (
-              <span className="text-[10px] bg-slate-200 text-slate-500 px-1.5 py-0.5 rounded-full ml-2 shrink-0">
-                cached
+            {pending.fromCache && (
+              <span className="text-[10px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded-full ml-2 shrink-0">
+                saved estimate
               </span>
             )}
           </div>
@@ -143,12 +177,59 @@ export default function MealLogger({ timeBlock, meals, onAdd, onRemove }) {
               ))}
             </ul>
           )}
-          <div className="flex items-center gap-2 pt-1">
-            <span className="text-xs font-semibold text-brand-700">
-              Total: {pending.macros.protein}g P · {pending.macros.fat}g F · {pending.macros.carbs}g C · {pending.macros.calories} kcal
-            </span>
+
+          {/* Editable estimate (per serving) */}
+          <div>
+            <p className="text-xs text-slate-600 mb-1">Per serving — fix anything that looks off:</p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {MACRO_FIELDS.map(f => (
+                <label key={f.key} className="block">
+                  <span className="block text-[11px] font-semibold text-slate-600 uppercase tracking-wide mb-0.5">
+                    {f.label}
+                  </span>
+                  <span className="relative block">
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min="0"
+                      className="input text-sm px-2 py-1.5 pr-8"
+                      value={edits[f.key] ?? ''}
+                      onChange={e => setEdits(v => ({ ...v, [f.key]: e.target.value }))}
+                    />
+                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-500 pointer-events-none">
+                      {f.unit}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </div>
           </div>
-          <div className="flex flex-wrap gap-2 pt-0.5">
+
+          {/* Portion */}
+          <div className="flex items-center gap-1.5" role="group" aria-label="Portion">
+            <span className="text-xs text-slate-600 mr-1">Portion</span>
+            {PORTIONS.map(p => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => setPortion(p)}
+                aria-pressed={portion === p}
+                className={`text-xs px-3 py-1.5 rounded-full border font-medium transition-colors ${
+                  portion === p
+                    ? 'bg-brand-700 text-white border-brand-700'
+                    : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
+                }`}
+              >
+                {p}×
+              </button>
+            ))}
+          </div>
+
+          <p className="text-xs font-semibold text-brand-700">
+            Total: {shown.protein}g P · {shown.fat}g F · {shown.carbs}g C · {shown.calories} kcal
+          </p>
+
+          <div className="flex flex-wrap gap-2">
             <button onClick={handleConfirm} className="btn-primary text-xs py-1.5 px-3">
               Add to log
             </button>
@@ -156,13 +237,17 @@ export default function MealLogger({ timeBlock, meals, onAdd, onRemove }) {
               onClick={handleSaveAndAdd}
               className="btn-secondary text-xs py-1.5 px-3 flex items-center gap-1"
             >
-              {justSaved ? '✓ Saved!' : '⭐ Save & Add'}
+              ⭐ Save & Add
             </button>
             <button onClick={handleDiscard} className="btn-ghost text-xs py-1.5 px-3">
               Discard
             </button>
           </div>
         </div>
+      )}
+
+      {justSaved && (
+        <p className="text-xs text-brand-700" role="status">✓ Saved to your meals</p>
       )}
 
       {/* ── Input row with saved-meals dropdown ─────────────────────────────── */}
@@ -172,6 +257,7 @@ export default function MealLogger({ timeBlock, meals, onAdd, onRemove }) {
             <input
               className="input text-sm"
               placeholder={savedMeals.length > 0 ? 'Select a saved meal or type a new one…' : 'Describe a meal or food (press Enter)'}
+              aria-label="Describe a meal or pick a saved one"
               value={input}
               onChange={e => { setInput(e.target.value); setDropdownOpen(true); }}
               onFocus={() => { if (savedMeals.length > 0) setDropdownOpen(true); }}
@@ -184,7 +270,7 @@ export default function MealLogger({ timeBlock, meals, onAdd, onRemove }) {
               className="btn-primary shrink-0 text-xs px-3"
             >
               {loading ? (
-                <span className="inline-block w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                <span className="inline-block w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" aria-label="Analyzing" />
               ) : 'Analyze'}
             </button>
           </div>
@@ -196,33 +282,39 @@ export default function MealLogger({ timeBlock, meals, onAdd, onRemove }) {
                 <table className="w-full text-xs border-collapse">
                   <thead className="sticky top-0 bg-slate-50 border-b border-slate-100">
                     <tr>
-                      <th className="text-left px-3 py-2 text-slate-500 font-medium">Meal</th>
-                      <th className="text-right px-2 py-2 text-slate-500 font-medium">P</th>
-                      <th className="text-right px-2 py-2 text-slate-500 font-medium">F</th>
-                      <th className="text-right px-2 py-2 text-slate-500 font-medium">C</th>
-                      <th className="text-right px-2 py-2 text-slate-500 font-medium">kcal</th>
-                      <th className="w-6" />
+                      <th className="text-left px-3 py-2 text-slate-600 font-medium">Meal</th>
+                      <th className="text-right px-2 py-2 text-slate-600 font-medium">P</th>
+                      <th className="text-right px-2 py-2 text-slate-600 font-medium">F</th>
+                      <th className="text-right px-2 py-2 text-slate-600 font-medium">C</th>
+                      <th className="text-right px-2 py-2 text-slate-600 font-medium">kcal</th>
+                      <th className="w-6"><span className="sr-only">Delete</span></th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredMeals.map((fav, i) => (
                       <tr
                         key={fav.id}
-                        className={`cursor-pointer hover:bg-amber-50 transition-colors ${i < filteredMeals.length - 1 ? 'border-b border-slate-50' : ''}`}
+                        tabIndex={0}
+                        aria-label={`Add ${fav.description}`}
+                        className={`cursor-pointer hover:bg-amber-50 focus:bg-amber-50 transition-colors ${i < filteredMeals.length - 1 ? 'border-b border-slate-50' : ''}`}
                         onClick={() => handleQuickAdd(fav)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleQuickAdd(fav); }
+                        }}
                       >
                         <td className="px-3 py-2 text-slate-800 font-medium">
                           <span className="block max-w-[180px] truncate">{fav.description}</span>
                         </td>
-                        <td className="px-2 py-2 text-right text-slate-500 tabular-nums">{fav.macros.protein}g</td>
-                        <td className="px-2 py-2 text-right text-slate-500 tabular-nums">{fav.macros.fat}g</td>
-                        <td className="px-2 py-2 text-right text-slate-500 tabular-nums">{fav.macros.carbs}g</td>
-                        <td className="px-2 py-2 text-right text-slate-500 tabular-nums">{fav.macros.calories}</td>
+                        <td className="px-2 py-2 text-right text-slate-600 tabular-nums">{fav.macros.protein}g</td>
+                        <td className="px-2 py-2 text-right text-slate-600 tabular-nums">{fav.macros.fat}g</td>
+                        <td className="px-2 py-2 text-right text-slate-600 tabular-nums">{fav.macros.carbs}g</td>
+                        <td className="px-2 py-2 text-right text-slate-600 tabular-nums">{fav.macros.calories}</td>
                         <td className="px-2 py-2">
                           <button
                             onClick={e => handleRemoveFavorite(fav.id, e)}
-                            className="text-slate-300 hover:text-red-400 transition-colors leading-none p-2 -m-2"
-                            title="Remove"
+                            className="text-slate-500 hover:text-red-500 transition-colors leading-none p-2 -m-2"
+                            aria-label={`Delete saved meal ${fav.description}`}
+                            title="Delete saved meal"
                           >
                             ×
                           </button>
@@ -238,7 +330,7 @@ export default function MealLogger({ timeBlock, meals, onAdd, onRemove }) {
       )}
 
       {error && (
-        <p className="text-xs text-red-500 bg-red-50 px-3 py-1.5 rounded-lg">{error}</p>
+        <p className="text-xs text-red-600 bg-red-50 px-3 py-1.5 rounded-lg" role="alert">{error}</p>
       )}
     </div>
   );

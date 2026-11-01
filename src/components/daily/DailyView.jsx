@@ -8,7 +8,7 @@ import MealLogger from './MealLogger.jsx';
 import SupplementChecklist from './SupplementChecklist.jsx';
 import ExerciseLogger from './ExerciseLogger.jsx';
 import HealthActivity from './HealthActivity.jsx';
-import TimeBlock, { BlockSection } from './TimeBlock.jsx';
+import TimeBlock, { BlockSection, BLOCK_ORDER, currentBlock } from './TimeBlock.jsx';
 import { useOura } from '../../hooks/useOura.js';
 
 export default function DailyView({ settings, jumpDate, onJumpConsumed }) {
@@ -112,6 +112,30 @@ export default function DailyView({ settings, jumpDate, onJumpConsumed }) {
   // The goals this day is scored against (frozen for past days)
   const dayTargets = targetsFor(selectedDate, log, settings);
 
+  // On today, blocks that have already passed start collapsed to a one-line
+  // summary and the current/upcoming ones start open; past days start fully
+  // open. Worked out once per day shown, so crossing a block boundary while
+  // you're typing doesn't collapse anything under you.
+  const nowBlock = useMemo(() => (viewingToday ? currentBlock() : null), [selectedDate, viewingToday]);
+  const startsOpen = id => !nowBlock || BLOCK_ORDER.indexOf(id) >= BLOCK_ORDER.indexOf(nowBlock);
+  const blockKey = id => `${id}-${selectedDate}-${startsOpen(id)}`;
+
+  const BLOCK_SUPP_TIMINGS = {
+    morning: ['morning-empty', 'with-food-morning'],
+    midmorning: [],
+    midday: ['afternoon'],
+    evening: ['nighttime'],
+  };
+  function blockSummary(id) {
+    const meals = (log.meals || []).filter(m => m.timeBlock === id);
+    const protein = meals.reduce((sum, m) => sum + (m.macros?.protein || 0), 0);
+    const supps = BLOCK_SUPP_TIMINGS[id].flatMap(t => suppsByTiming[t]);
+    const parts = [meals.length ? `${meals.length} meal${meals.length === 1 ? '' : 's'}, ${protein}g protein` : 'no meals'];
+    if (supps.length) parts.push(`${supps.filter(sp => log.supplements?.[sp.id]).length}/${supps.length} supplements`);
+    if (id === 'midmorning') parts.push(`${log.water || 0}/${dayTargets.waterTarget} water`);
+    return parts.join(' · ');
+  }
+
   return (
     <div className="space-y-4">
       {/* Date navigator */}
@@ -122,7 +146,7 @@ export default function DailyView({ settings, jumpDate, onJumpConsumed }) {
           {!viewingToday && (
             <button
               onClick={goToday}
-              className="text-xs text-brand-500 hover:text-brand-600 mt-0.5"
+              className="text-xs text-brand-700 hover:text-brand-600 mt-0.5"
             >
               Back to today
             </button>
@@ -141,7 +165,7 @@ export default function DailyView({ settings, jumpDate, onJumpConsumed }) {
       <MacroSummary meals={log.meals || []} targets={dayTargets.macroTargets} final={selectedDate < todayKey} />
 
       {/* ── Morning ──────────────────────────────────────────────────────── */}
-      <TimeBlock id="morning" defaultOpen={true}>
+      <TimeBlock key={blockKey('morning')} id="morning" defaultOpen={startsOpen('morning')} summary={blockSummary('morning')}>
         {suppsByTiming['morning-empty'].length > 0 && (
           <BlockSection title="Supplements · Empty Stomach">
             <SupplementChecklist
@@ -171,7 +195,7 @@ export default function DailyView({ settings, jumpDate, onJumpConsumed }) {
       </TimeBlock>
 
       {/* ── Mid-Morning ──────────────────────────────────────────────────── */}
-      <TimeBlock id="midmorning" defaultOpen={true}>
+      <TimeBlock key={blockKey('midmorning')} id="midmorning" defaultOpen={startsOpen('midmorning')} summary={blockSummary('midmorning')}>
         <BlockSection title="Snack">
           <MealLogger
             timeBlock="midmorning"
@@ -196,7 +220,7 @@ export default function DailyView({ settings, jumpDate, onJumpConsumed }) {
       </TimeBlock>
 
       {/* ── Mid-Day ──────────────────────────────────────────────────────── */}
-      <TimeBlock id="midday" defaultOpen={true}>
+      <TimeBlock key={blockKey('midday')} id="midday" defaultOpen={startsOpen('midday')} summary={blockSummary('midday')}>
         <BlockSection title="Lunch">
           <MealLogger
             timeBlock="midday"
@@ -217,7 +241,7 @@ export default function DailyView({ settings, jumpDate, onJumpConsumed }) {
       </TimeBlock>
 
       {/* ── Evening ──────────────────────────────────────────────────────── */}
-      <TimeBlock id="evening" defaultOpen={true}>
+      <TimeBlock key={blockKey('evening')} id="evening" defaultOpen={startsOpen('evening')} summary={blockSummary('evening')}>
         <BlockSection title="Dinner">
           <MealLogger
             timeBlock="evening"

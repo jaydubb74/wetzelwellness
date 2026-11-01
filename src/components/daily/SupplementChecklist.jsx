@@ -22,10 +22,10 @@ export default function SupplementChecklist({ supplements, checked, onToggle, sh
             checked={!!checked[supp.id]}
             onChange={() => onToggle(supp.id)}
           />
-          <span className={`text-sm transition-colors ${checked[supp.id] ? 'line-through text-slate-400' : 'text-slate-700'}`}>
+          <span className={`text-sm transition-colors ${checked[supp.id] ? 'line-through text-slate-500' : 'text-slate-700'}`}>
             {supp.name}
           </span>
-          <span className="ml-auto text-[11px] text-slate-400 shrink-0">
+          <span className="ml-auto text-[11px] text-slate-500 shrink-0">
             {TIMING_LABELS[supp.timing] || supp.timing}
           </span>
         </label>
@@ -43,18 +43,20 @@ export default function SupplementChecklist({ supplements, checked, onToggle, sh
               <div className="flex items-center gap-1">
                 <button
                   onClick={() => onWater(water - 1)}
-                  className="w-7 h-7 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-100 text-sm font-medium transition-colors"
+                  aria-label="Remove a glass of water"
+                  className="w-10 h-10 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 text-base font-medium transition-colors"
                 >−</button>
-                <span className={`text-sm font-semibold w-14 text-center ${water >= waterTarget ? 'text-brand-600' : 'text-slate-800'}`}>
+                <span aria-live="polite" className={`text-sm font-semibold w-14 text-center ${water >= waterTarget ? 'text-brand-700' : 'text-slate-800'}`}>
                   {water} / {waterTarget}
                 </span>
                 <button
                   onClick={() => onWater(water + 1)}
-                  className="w-7 h-7 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-100 text-sm font-medium transition-colors"
+                  aria-label="Add a glass of water"
+                  className="w-10 h-10 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 text-base font-medium transition-colors"
                 >+</button>
               </div>
               {/* Dot indicators */}
-              <div className="flex gap-1 flex-wrap ml-1">
+              <div className="flex gap-1 flex-wrap ml-1" aria-hidden="true">
                 {Array.from({ length: waterTarget }, (_, i) => (
                   <span
                     key={i}
@@ -72,7 +74,7 @@ export default function SupplementChecklist({ supplements, checked, onToggle, sh
                 checked={electrolytes}
                 onChange={e => onElectrolytes(e.target.checked)}
               />
-              <span className={`text-sm transition-colors ${electrolytes ? 'line-through text-slate-400' : 'text-slate-700'}`}>
+              <span className={`text-sm transition-colors ${electrolytes ? 'line-through text-slate-500' : 'text-slate-700'}`}>
                 ⚡ Electrolytes
               </span>
             </label>
@@ -81,7 +83,7 @@ export default function SupplementChecklist({ supplements, checked, onToggle, sh
       )}
 
       {!hasSupps && !showHydration && (
-        <p className="text-xs text-slate-400 italic py-1">No supplements for this time block.</p>
+        <p className="text-xs text-slate-500 italic py-1">No supplements for this time block.</p>
       )}
     </div>
   );

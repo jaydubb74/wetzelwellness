@@ -198,14 +198,26 @@ export function getNutritionCache() {
 }
 
 export function saveNutritionCache(cache) {
-  // Only persist user-added/LLM-generated entries (not the seed)
+  // Only persist user-added/LLM-generated entries, and seed entries the user
+  // has corrected — an unchanged seed entry doesn't need storing
   const toSave = Object.fromEntries(
-    Object.entries(cache).filter(([k]) => !(k in SEED_CACHE))
+    Object.entries(cache).filter(([k, v]) => !(k in SEED_CACHE) || !deepEqual(v, SEED_CACHE[k]))
   );
   localStorage.setItem(KEY.NUTRITION_CACHE, JSON.stringify(toSave));
 }
 
 // ── Saved / favourite meals ───────────────────────────────────────────────────
+
+// Lets every meal logger on screen show the same favourites after any change
+// (including ones pulled from another device).
+const savedMealsListeners = new Set();
+export function onSavedMealsChange(fn) {
+  savedMealsListeners.add(fn);
+  return () => savedMealsListeners.delete(fn);
+}
+function notifySavedMealsListeners() {
+  savedMealsListeners.forEach(fn => fn());
+}
 
 export function getDeletedMeals() {
   try {
@@ -219,6 +231,7 @@ export function getDeletedMeals() {
 export function writeSavedMeals(meals, deleted) {
   localStorage.setItem(KEY.SAVED_MEALS, JSON.stringify(meals));
   localStorage.setItem(KEY.SAVED_MEALS_DELETED, JSON.stringify(deleted));
+  notifySavedMealsListeners();
 }
 
 /** Union by id, de-dupe by description, drop tombstoned ids. Mirrors the server. */
@@ -260,6 +273,7 @@ export function saveFavoriteMeal({ description, macros }) {
   ];
   localStorage.setItem(KEY.SAVED_MEALS, JSON.stringify(updated));
   syncNotifier?.onMeals?.();
+  notifySavedMealsListeners();
   return updated;
 }
 
@@ -271,6 +285,7 @@ export function removeFavoriteMeal(id) {
   localStorage.setItem(KEY.SAVED_MEALS, JSON.stringify(updated));
   localStorage.setItem(KEY.SAVED_MEALS_DELETED, JSON.stringify({ ...getDeletedMeals(), [id]: Date.now() }));
   syncNotifier?.onMeals?.();
+  notifySavedMealsListeners();
   return updated;
 }
 

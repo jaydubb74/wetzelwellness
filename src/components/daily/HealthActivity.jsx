@@ -24,7 +24,7 @@ function ScoreBadge({ score }) {
 function Stat({ label, value }) {
   return (
     <div className="min-w-0">
-      <p className="text-[11px] text-slate-400 uppercase tracking-wide">{label}</p>
+      <p className="text-[11px] text-slate-500 uppercase tracking-wide">{label}</p>
       <p className="text-sm font-semibold text-slate-800 tabular-nums truncate">{value}</p>
     </div>
   );
@@ -51,14 +51,14 @@ function MovementCard({ exercises, onRemove }) {
           <span className="text-xs text-brand-700 tabular-nums">{goalCal.toLocaleString()} active cal</span>
         </div>
       ) : (
-        <p className="text-xs text-slate-400">Movement goal not hit yet</p>
+        <p className="text-xs text-slate-500">Movement goal not hit yet</p>
       )}
 
       {/* Logged workouts / activities */}
       {activities.length > 0 ? (
         <ExerciseList exercises={activities} onRemove={onRemove} />
       ) : (
-        <p className="text-xs text-slate-400">No activities logged yet</p>
+        <p className="text-xs text-slate-500">No activities logged yet</p>
       )}
     </div>
   );
@@ -74,7 +74,7 @@ export default function HealthActivity({ oura, syncing, error, onRefresh, exerci
   if (!configured && !oura) {
     return (
       <div className="space-y-3">
-        <p className="text-xs text-slate-400 bg-slate-50 rounded-xl px-3 py-2.5">
+        <p className="text-xs text-slate-500 bg-slate-50 rounded-xl px-3 py-2.5">
           💍 Connect your Oura ring in <span className="font-medium">Settings</span> to
           auto-fill sleep and readiness.
         </p>
@@ -106,7 +106,7 @@ export default function HealthActivity({ oura, syncing, error, onRefresh, exerci
           ) : oura?.errors?.sleep ? (
             <p className="text-xs text-red-500">{oura.errors.sleep}</p>
           ) : (
-            <p className="text-xs text-slate-400">No sleep data yet</p>
+            <p className="text-xs text-slate-500">No sleep data yet</p>
           )}
         </div>
 
@@ -124,7 +124,7 @@ export default function HealthActivity({ oura, syncing, error, onRefresh, exerci
           ) : oura?.errors?.readiness ? (
             <p className="text-xs text-red-500">{oura.errors.readiness}</p>
           ) : (
-            <p className="text-xs text-slate-400">No readiness data yet</p>
+            <p className="text-xs text-slate-500">No readiness data yet</p>
           )}
         </div>
       </div>
@@ -143,7 +143,7 @@ export default function HealthActivity({ oura, syncing, error, onRefresh, exerci
           {syncing ? 'Syncing…' : 'Sync Oura'}
         </button>
         {oura?.fetchedAt && !syncing && (
-          <span className="text-[11px] text-slate-400">
+          <span className="text-[11px] text-slate-500">
             updated {new Date(oura.fetchedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
           </span>
         )}

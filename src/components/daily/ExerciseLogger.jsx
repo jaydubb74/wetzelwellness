@@ -23,14 +23,15 @@ export function ExerciseList({ exercises, onRemove }) {
               {meta.icon} {meta.label}
             </span>
             <span className="text-sm text-slate-700 flex-1">{ex.type}</span>
-            <span className="text-xs text-slate-400 shrink-0">
+            <span className="text-xs text-slate-500 shrink-0">
               {ex.category === 'movement'
                 ? `${ex.activeCalories ?? '–'} active cal`
                 : ex.duration ? `${ex.duration} min` : '–'}
             </span>
             <button
               onClick={() => onRemove(ex.id)}
-              className="text-slate-300 hover:text-red-400 transition-colors p-2 -m-1 rounded min-w-[36px] min-h-[36px]"
+              aria-label={`Remove ${ex.type || meta.label}`}
+              className="text-slate-500 hover:text-red-500 transition-colors p-2 -m-1 rounded min-w-[44px] min-h-[44px]"
             >✕</button>
           </div>
         );
@@ -164,7 +165,7 @@ export default function ExerciseLogger({ weekCounts = {}, goals, onAdd }) {
                 onClick={() => setForm(f => ({ ...f, category: cat.id }))}
                 className={`text-xs px-3 py-1.5 rounded-full border font-medium transition-colors ${
                   form.category === cat.id
-                    ? 'bg-brand-500 text-white border-brand-500'
+                    ? 'bg-brand-700 text-white border-brand-700'
                     : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
                 }`}
               >
