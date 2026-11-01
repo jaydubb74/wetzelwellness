@@ -27,7 +27,11 @@ export async function onRequest(context) {
   if (!env.WW_KV || !env.SYNC_KEY) {
     return json({ error: 'Sync not configured on server (WW_KV / SYNC_KEY missing)' }, 501);
   }
-  if (request.headers.get('x-sync-key') !== env.SYNC_KEY) {
+  // Trim both sides so a stray space/newline in the stored secret or the
+  // client header can't cause a spurious "Invalid sync key".
+  const sentKey = (request.headers.get('x-sync-key') || '').trim();
+  const serverKey = String(env.SYNC_KEY).trim();
+  if (!serverKey || sentKey !== serverKey) {
     return json({ error: 'Invalid sync key' }, 401);
   }
 
