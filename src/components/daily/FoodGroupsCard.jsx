@@ -3,39 +3,54 @@ import { HEALTH_SCORE_CONFIG, foodGroupServings } from '../../utils/healthScore.
 const STEP = 0.5;
 
 /**
- * The day's servings for each food group you've set a target for. Starts
- * from the AI estimates on your meals; adjusting any group switches the day
- * to your own numbers (which you can reset).
+ * The day's servings for each food group you've set a target for, added up
+ * from the AI estimates on your meals. +/− adjusts a group on top of those
+ * estimates, so meals logged later still count.
  */
-export default function FoodGroupsCard({ log, targets, onSetFoodGroups }) {
+export default function FoodGroupsCard({ log, targets, estimates, onAdjust }) {
   const groups = HEALTH_SCORE_CONFIG.foodGroups.filter(g => targets.foodGroupTargets?.[g.key] > 0);
   if (!groups.length) return null;
 
-  const { servings, source, unestimated } = foodGroupServings(log);
+  const { servings, adjusted, unestimated } = foodGroupServings(log);
+  const legacyTotals = !!log.foodGroups;
 
   function adjust(key, delta) {
-    const next = Math.max(0, Math.round(((servings[key] || 0) + delta) * 2) / 2);
-    onSetFoodGroups({ ...servings, [key]: next });
+    const current = servings[key] || 0;
+    const next = Math.max(0, Math.round((current + delta) * 2) / 2);
+    // Older days stored totals outright; turn those into adjustments first
+    const base = legacyTotals
+      ? Object.fromEntries(Object.entries(log.foodGroups).map(([k, v]) => [k, v - mealTotal(log.meals, k)]))
+      : (log.foodGroupAdjust || {});
+    onAdjust({ ...base, [key]: (base[key] || 0) + (next - current) });
   }
 
   return (
     <div className="card space-y-3">
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-slate-900">Food groups</h3>
-        {source === 'manual' ? (
-          <button onClick={() => onSetFoodGroups(null)} className="text-xs font-medium text-brand-700 hover:text-brand-600">
-            Use meal estimates
+        {adjusted ? (
+          <button onClick={() => onAdjust(null)} className="text-xs font-medium text-brand-700 hover:text-brand-600">
+            Undo adjustments
           </button>
         ) : (
-          <span className="text-[11px] text-slate-500">AI estimates from meals</span>
+          <span className="text-[11px] text-slate-500">Filled in from your meals</span>
         )}
       </div>
 
-      {source === 'meals' && unestimated > 0 && (
-        <p className="text-xs text-amber-700 bg-amber-50 rounded-lg px-2.5 py-1.5">
-          {unestimated} meal{unestimated === 1 ? ' has' : 's have'} no estimate, so food quality is incomplete.
-          Adjust the servings below to set the day’s totals yourself.
+      {estimates.estimating > 0 ? (
+        <p className="text-xs text-slate-500" aria-live="polite">
+          Estimating food groups for {unestimated || estimates.estimating} meal{(unestimated || estimates.estimating) === 1 ? '' : 's'}…
         </p>
+      ) : unestimated > 0 && (
+        <div className="text-xs text-amber-700 bg-amber-50 rounded-lg px-2.5 py-1.5 flex items-start justify-between gap-2">
+          <span>
+            Couldn’t estimate {unestimated} meal{unestimated === 1 ? '' : 's'}
+            {estimates.error ? ` — ${estimates.error}` : ''}
+          </span>
+          <button onClick={estimates.retry} className="font-medium text-brand-700 hover:text-brand-600 shrink-0">
+            Try again
+          </button>
+        </div>
       )}
 
       <div className="space-y-2">
@@ -62,7 +77,13 @@ export default function FoodGroupsCard({ log, targets, onSetFoodGroups }) {
           );
         })}
       </div>
-      {source === 'manual' && <p className="text-[11px] text-slate-500">Adjusted by you for this day.</p>}
+      {adjusted && (
+        <p className="text-[11px] text-slate-500">Includes your adjustments — meals you log later still add to these.</p>
+      )}
     </div>
   );
+}
+
+function mealTotal(meals, key) {
+  return (meals || []).reduce((sum, m) => sum + (m.groups?.[key] || 0), 0);
 }

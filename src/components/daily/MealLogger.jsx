@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { parseMealMacros, saveMealCorrection, FOOD_GROUP_KEYS } from '../../services/llm.js';
+import { parseMealMacros, saveMealCorrection, scaleGroups, FOOD_GROUP_KEYS } from '../../services/llm.js';
 import * as storage from '../../services/storage.js';
 import { useSavedMeals } from '../../hooks/useSavedMeals.js';
 
@@ -11,10 +11,6 @@ const MACRO_FIELDS = [
 ];
 const PORTIONS = [0.5, 1, 1.5, 2];
 const GROUP_LABELS = { vegetables: 'Vegetables', fruit: 'Fruit', wholeGrains: 'Whole grains', legumes: 'Legumes', nuts: 'Nuts' };
-
-function scaleGroups(groups, multiplier) {
-  return Object.fromEntries(FOOD_GROUP_KEYS.map(k => [k, Math.round((groups[k] || 0) * multiplier * 2) / 2]));
-}
 
 // "Vegetables 1 · Whole grains 2", or "none" when every group is zero
 function describeGroups(groups) {

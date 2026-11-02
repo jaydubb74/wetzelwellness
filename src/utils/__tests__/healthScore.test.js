@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   HEALTH_SCORE_CONFIG, weightedPoints, bandPoints, sleepPoints, scoreHealthDay,
-  averageHealth, lastSevenDays, planFor, editPlan, upcomingPlanDays,
+  averageHealth, lastSevenDays, planFor, editPlan, upcomingPlanDays, foodGroupServings,
 } from '../healthScore.js';
 
 // Sun–Sat
@@ -125,11 +125,20 @@ describe('missing data', () => {
     expect(fq.status).toBe('incomplete');
     expect(fq.note).toMatch(/no food-group estimate/);
 
-    // Setting the day's servings by hand completes it
+    // Day totals stored by hand on older logs still complete it
     log.foodGroups = { vegetables: 3, fruit: 1, wholeGrains: 3, legumes: 0, nuts: 0 };
     const fixed = scoreHealthDay('2026-11-12', log, settings).pillars.nutrition.components.find(c => c.key === 'foodQuality');
     expect(fixed.status).toBe('final');
     expect(fixed.points).toBeCloseTo(83.3, 1); // veg 1, fruit 0.5, grains 1
+  });
+
+  it('adds hand adjustments on top of the meal estimates, never below zero', () => {
+    const log = perfectLog('2026-11-12', { foodGroupAdjust: { fruit: -1, nuts: -2 } });
+    log.meals.push({ macros: { protein: 0, fat: 0, carbs: 0, calories: 0 }, groups: { vegetables: 0, fruit: 0.5, wholeGrains: 0, legumes: 0, nuts: 1 } });
+    const { servings, adjusted } = foodGroupServings(log);
+    expect(servings).toEqual({ vegetables: 3, fruit: 1.5, wholeGrains: 3, legumes: 0, nuts: 0 });
+    expect(adjusted).toBe(true);
+    expect(foodGroupServings(perfectLog('2026-11-12')).adjusted).toBe(false);
   });
 
   it('is incomplete when a target has not been set', () => {

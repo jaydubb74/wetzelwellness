@@ -14,8 +14,13 @@ export async function parseMealMacros(description) {
   const key = cacheKey(description);
   const cache = storage.getNutritionCache();
 
-  if (cache[key]) {
-    return { ...cache[key], fromCache: true };
+  // Entries without macros only remember a food-group estimate
+  const hit = cache[key];
+  if (hit?.calories != null) {
+    if (hit.groups) return { ...hit, fromCache: true };
+    // Remembered before food groups existed: fill them in now if we can
+    const groups = await estimateFoodGroups(description).catch(() => null);
+    return { ...hit, ...(groups ? { groups } : {}), fromCache: true };
   }
 
   const result = validateMacros(await callLLM(buildMealPrompt(description)));
@@ -40,7 +45,27 @@ export function saveMealCorrection(description, macros, groups) {
   });
 }
 
+/**
+ * Food-group servings for a meal that came without them (logged or saved
+ * before estimates existed). Remembered per description, so each meal is only
+ * asked about once.
+ */
+export async function estimateFoodGroups(description) {
+  const key = cacheKey(description);
+  const cached = storage.getNutritionCache()[key];
+  if (cached?.groups) return cached.groups;
+  const groups = validateGroups((await callLLM(buildGroupsPrompt(description))).groups);
+  if (!groups) throw new Error('The AI returned an unusable food-group estimate. Please try again.');
+  storage.saveNutritionCache({ ...storage.getNutritionCache(), [key]: { ...cached, groups } });
+  return groups;
+}
+
 export const FOOD_GROUP_KEYS = ['vegetables', 'fruit', 'wholeGrains', 'legumes', 'nuts'];
+
+/** Servings × portion, to the nearest half. */
+export function scaleGroups(groups, multiplier) {
+  return Object.fromEntries(FOOD_GROUP_KEYS.map(k => [k, Math.round((groups[k] || 0) * multiplier * 2) / 2]));
+}
 
 // Servings per food group, to the nearest half; null when the model didn't
 // give a usable estimate (the meal then counts as having no estimate).
@@ -95,7 +120,22 @@ Required JSON shape:
 
 Use realistic portion estimates. Protein, fat, carbs, and calories must be positive integers.
 
-For "groups", estimate standard servings (halves allowed, 0 if absent): vegetables — 1 cup raw leafy or ½ cup other vegetables; fruit — 1 medium fruit or ½ cup; wholeGrains — 1 slice whole-grain bread or ½ cup cooked whole grains (refined grains such as white rice or white bread don't count); legumes — ½ cup cooked beans, lentils, or chickpeas; nuts — 1 oz nuts or seeds, or 2 tbsp nut butter.`;
+${GROUPS_GUIDE}`;
+}
+
+const GROUPS_GUIDE = `For "groups", estimate standard servings (halves allowed, 0 if absent): vegetables — 1 cup raw leafy or ½ cup other vegetables; fruit — 1 medium fruit or ½ cup; wholeGrains — 1 slice whole-grain bread or ½ cup cooked whole grains (refined grains such as white rice or white bread don't count); legumes — ½ cup cooked beans, lentils, or chickpeas; nuts — 1 oz nuts or seeds, or 2 tbsp nut butter.`;
+
+function buildGroupsPrompt(description) {
+  return `Estimate the food groups in this meal. Reply with ONLY a valid JSON object — no prose, no markdown fences.
+
+Meal: "${description}"
+
+Required JSON shape:
+{
+  "groups": { "vegetables": <servings>, "fruit": <servings>, "wholeGrains": <servings>, "legumes": <servings>, "nuts": <servings> }
+}
+
+Use realistic portion estimates. ${GROUPS_GUIDE}`;
 }
 
 // ── Settings AI assistant ─────────────────────────────────────────────────────

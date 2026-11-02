@@ -176,17 +176,23 @@ function pillar(key, label, components) {
   };
 }
 
-/** Servings per food group for the day: your adjustment, else the meals' estimates. */
+/**
+ * Servings per food group for the day: the meals' estimates plus any
+ * adjustments you made (so meals logged afterwards still add to the totals).
+ */
 export function foodGroupServings(log) {
-  if (log?.foodGroups) return { servings: log.foodGroups, source: 'manual', unestimated: 0 };
+  // Older logs stored the day's totals outright
+  if (log?.foodGroups) return { servings: log.foodGroups, adjusted: true, unestimated: 0 };
   const meals = log?.meals || [];
+  const adjust = log?.foodGroupAdjust || {};
   const servings = Object.fromEntries(cfg.foodGroups.map(g => [g.key, 0]));
   let unestimated = 0;
   for (const m of meals) {
     if (!m.groups) { unestimated++; continue; }
     for (const g of cfg.foodGroups) servings[g.key] += m.groups[g.key] || 0;
   }
-  return { servings, source: 'meals', unestimated };
+  for (const g of cfg.foodGroups) servings[g.key] = Math.max(0, servings[g.key] + (adjust[g.key] || 0));
+  return { servings, adjusted: Object.values(adjust).some(Boolean), unestimated };
 }
 
 function nutritionPillar(log, targets, live) {
@@ -202,7 +208,7 @@ function nutritionPillar(log, targets, live) {
   if (!groups.length) foodQuality = incomplete('Set food-group targets in Settings');
   else if (noFood) foodQuality = incomplete('No food logged');
   else if (unestimated) {
-    foodQuality = incomplete(`${unestimated} meal${unestimated === 1 ? ' has' : 's have'} no food-group estimate — set the day's servings`);
+    foodQuality = incomplete(`${unestimated} meal${unestimated === 1 ? ' has' : 's have'} no food-group estimate yet`);
   } else {
     const met = groups.map(g => Math.min((servings[g.key] || 0) / targets.foodGroupTargets[g.key], 1));
     foodQuality = {

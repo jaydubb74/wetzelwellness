@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { applySettingsIntent, parseMealMacros, saveMealCorrection } from '../llm.js';
+import { applySettingsIntent, parseMealMacros, saveMealCorrection, estimateFoodGroups } from '../llm.js';
 
 const realFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = realFetch; });
@@ -75,5 +75,47 @@ describe('meal food-group estimates', () => {
     expect((await parseMealMacros('mystery plate')).groups).toBeUndefined();
     stubModel(macros);
     expect((await parseMealMacros('another plate')).groups).toBeUndefined();
+  });
+});
+
+describe('filling in food groups for meals without them', () => {
+  const groups = { vegetables: 2, fruit: 0, wholeGrains: 1, legumes: 0, nuts: 0 };
+  let calls;
+  function stubGroupsModel() {
+    const store = new Map();
+    globalThis.localStorage = { getItem: k => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) };
+    calls = 0;
+    globalThis.fetch = async () => {
+      calls++;
+      return new Response(JSON.stringify({ content: [{ type: 'text', text: JSON.stringify({ groups }) }] }));
+    };
+  }
+
+  it('adds groups to a remembered meal and keeps its corrected macros', async () => {
+    stubGroupsModel();
+    saveMealCorrection('turkey sandwich', { protein: 35, fat: 12, carbs: 40, calories: 430 });
+    const result = await parseMealMacros('turkey sandwich');
+    expect(result).toMatchObject({ protein: 35, calories: 430, groups, fromCache: true });
+    await parseMealMacros('turkey sandwich');
+    expect(calls).toBe(1); // remembered after the first ask
+  });
+
+  it('asks once per description for a logged meal', async () => {
+    stubGroupsModel();
+    expect(await estimateFoodGroups('Leftover chili')).toEqual(groups);
+    expect(await estimateFoodGroups('leftover  chili')).toEqual(groups);
+    expect(calls).toBe(1);
+    // A groups-only memory isn't mistaken for a macro estimate
+    globalThis.fetch = async () => new Response(JSON.stringify({ content: [{ type: 'text', text: JSON.stringify({ protein: 30, fat: 15, carbs: 35, calories: 400, groups }) }] }));
+    expect((await parseMealMacros('leftover chili')).fromCache).toBe(false);
+  });
+
+  it('still returns the remembered macros when the estimate fails', async () => {
+    stubGroupsModel();
+    saveMealCorrection('protein shake', { protein: 40, fat: 3, carbs: 5, calories: 210 });
+    globalThis.fetch = async () => new Response('{}', { status: 500 });
+    const result = await parseMealMacros('protein shake');
+    expect(result.protein).toBe(40);
+    expect(result.groups).toBeUndefined();
   });
 });

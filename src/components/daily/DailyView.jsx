@@ -13,6 +13,7 @@ import HealthScoreCard from './HealthScoreCard.jsx';
 import FoodGroupsCard from './FoodGroupsCard.jsx';
 import TimeBlock, { BlockSection, BLOCK_ORDER, currentBlock } from './TimeBlock.jsx';
 import { useOura } from '../../hooks/useOura.js';
+import { useFoodGroupEstimates } from '../../hooks/useFoodGroupEstimates.js';
 
 export default function DailyView({ settings, jumpDate, onJumpConsumed }) {
   // Always initialize to the LOCAL calendar date, never UTC.
@@ -87,7 +88,7 @@ export default function DailyView({ settings, jumpDate, onJumpConsumed }) {
     toggleSupplement,
     setWater, setElectrolytes,
     addExercise, removeExercise,
-    setSteps, setFoodGroups,
+    setSteps, setFoodGroupAdjust,
   } = useDailyLog(selectedDate);
 
   // Oura data for the selected day (auto-fetches into log.oura)
@@ -115,6 +116,9 @@ export default function DailyView({ settings, jumpDate, onJumpConsumed }) {
 
   // The goals this day is scored against (frozen for past days)
   const dayTargets = targetsFor(selectedDate, log, settings);
+  // Only worth asking the model once there's a food-group target to score
+  const tracksFoodGroups = Object.values(dayTargets.foodGroupTargets || {}).some(t => t > 0);
+  const foodGroupEstimates = useFoodGroupEstimates(selectedDate, log.meals, updateMeal, tracksFoodGroups);
 
   // Health-consistency score for the day, and the seven days before it
   const healthDay = useMemo(() => scoreHealthDay(selectedDate, log, settings), [selectedDate, log, settings]);
@@ -178,7 +182,7 @@ export default function DailyView({ settings, jumpDate, onJumpConsumed }) {
       {/* Macro summary */}
       <MacroSummary meals={log.meals || []} targets={dayTargets.macroTargets} final={selectedDate < todayKey} />
 
-      <FoodGroupsCard log={log} targets={dayTargets} onSetFoodGroups={setFoodGroups} />
+      <FoodGroupsCard log={log} targets={dayTargets} estimates={foodGroupEstimates} onAdjust={setFoodGroupAdjust} />
 
       {/* ── Morning ──────────────────────────────────────────────────────── */}
       <TimeBlock key={blockKey('morning')} id="morning" defaultOpen={startsOpen('morning')} summary={blockSummary('morning')}>

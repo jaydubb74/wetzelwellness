@@ -81,11 +81,12 @@ export function useDailyLog(date) {
     update(prev => ({ ...prev, steps }));
   }, [update]);
 
-  // The day's food-group servings set by hand; null goes back to meal estimates
-  const setFoodGroups = useCallback((foodGroups) => {
+  // Hand adjustments on top of the meals' food-group estimates (servings per
+  // group, + or −); null clears them. Replaces the older stored day totals.
+  const setFoodGroupAdjust = useCallback((foodGroupAdjust) => {
     update(prev => {
-      const { foodGroups: _, ...rest } = prev;
-      return foodGroups ? { ...rest, foodGroups } : rest;
+      const { foodGroups: _, foodGroupAdjust: __, ...rest } = prev;
+      return foodGroupAdjust ? { ...rest, foodGroupAdjust } : rest;
     });
   }, [update]);
 
@@ -111,7 +112,7 @@ export function useDailyLog(date) {
     addExercise,
     removeExercise,
     setSteps,
-    setFoodGroups,
+    setFoodGroupAdjust,
   };
 }
 
