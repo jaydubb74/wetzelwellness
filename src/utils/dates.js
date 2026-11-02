@@ -127,6 +127,29 @@ export function getMonthDates(anchorDate = today()) {
   );
 }
 
+/**
+ * Returns all YYYY-MM-DD keys for the calendar quarter (Jan–Mar, Apr–Jun,
+ * Jul–Sep, Oct–Dec) containing `anchorDate`.
+ * @param {string} [anchorDate]
+ * @returns {string[]}
+ */
+export function getQuarterDates(anchorDate = today()) {
+  const d = new Date(anchorDate + 'T00:00:00');
+  const firstMonth = Math.floor(d.getMonth() / 3) * 3;
+  return [0, 1, 2].flatMap(i => getMonthDates(getLocalDateKey(new Date(d.getFullYear(), firstMonth + i, 1))));
+}
+
+/**
+ * Returns a date in the quarter `quarters` before/after the one containing
+ * `dateStr` (the 1st of the matching month).
+ * @param {string} dateStr
+ * @param {number} quarters
+ * @returns {string}
+ */
+export function offsetQuarter(dateStr, quarters) {
+  return offsetMonth(dateStr, quarters * 3);
+}
+
 // ── Label helpers ──────────────────────────────────────────────────────────────
 
 export function weekLabel(anchorDate = today()) {
@@ -137,6 +160,11 @@ export function weekLabel(anchorDate = today()) {
 export function monthLabel(anchorDate = today()) {
   const d = new Date(anchorDate + 'T00:00:00');
   return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+}
+
+export function quarterLabel(anchorDate = today()) {
+  const d = new Date(anchorDate + 'T00:00:00');
+  return `Q${Math.floor(d.getMonth() / 3) + 1} ${d.getFullYear()}`;
 }
 
 export function dayOfWeekInitial(dateStr) {

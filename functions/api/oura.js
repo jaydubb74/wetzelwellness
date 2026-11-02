@@ -7,7 +7,7 @@
  * Header: x-oura-token — the user's Personal Access Token.
  */
 
-const ALLOWED_ENDPOINTS = new Set(['daily_sleep', 'sleep', 'daily_readiness']);
+const ALLOWED_ENDPOINTS = new Set(['daily_sleep', 'sleep', 'daily_readiness', 'daily_activity']);
 
 export async function onRequestGet(context) {
   const { request } = context;

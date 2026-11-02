@@ -29,14 +29,30 @@ export async function parseMealMacros(description) {
 
 /**
  * Remembers corrected macros for a description, so the next time it's typed
- * the corrected values come back instead of the original estimate.
+ * the corrected values come back instead of the original estimate. The
+ * food-group estimate is kept alongside when there is one.
  */
-export function saveMealCorrection(description, macros) {
+export function saveMealCorrection(description, macros, groups) {
   const { protein, fat, carbs, calories } = macros;
   storage.saveNutritionCache({
     ...storage.getNutritionCache(),
-    [cacheKey(description)]: { protein, fat, carbs, calories },
+    [cacheKey(description)]: { protein, fat, carbs, calories, ...(groups ? { groups } : {}) },
   });
+}
+
+export const FOOD_GROUP_KEYS = ['vegetables', 'fruit', 'wholeGrains', 'legumes', 'nuts'];
+
+// Servings per food group, to the nearest half; null when the model didn't
+// give a usable estimate (the meal then counts as having no estimate).
+function validateGroups(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const groups = {};
+  for (const k of FOOD_GROUP_KEYS) {
+    const n = Number(raw[k] ?? 0);
+    if (!Number.isFinite(n) || n < 0) return null;
+    groups[k] = Math.round(n * 2) / 2;
+  }
+  return groups;
 }
 
 // Reject malformed LLM output before it reaches the log or the cache
@@ -55,6 +71,8 @@ function validateMacros(raw) {
     throw new Error('The AI returned invalid macro values. Please try again.');
   }
   if (Array.isArray(raw.breakdown)) result.breakdown = raw.breakdown;
+  const groups = validateGroups(raw.groups);
+  if (groups) result.groups = groups;
   return result;
 }
 
@@ -71,10 +89,13 @@ Required JSON shape:
   "calories": <integer>,
   "breakdown": [
     { "item": "<food name>", "protein": <g>, "fat": <g>, "carbs": <g>, "calories": <n> }
-  ]
+  ],
+  "groups": { "vegetables": <servings>, "fruit": <servings>, "wholeGrains": <servings>, "legumes": <servings>, "nuts": <servings> }
 }
 
-Use realistic portion estimates. Protein, fat, carbs, and calories must be positive integers.`;
+Use realistic portion estimates. Protein, fat, carbs, and calories must be positive integers.
+
+For "groups", estimate standard servings (halves allowed, 0 if absent): vegetables — 1 cup raw leafy or ½ cup other vegetables; fruit — 1 medium fruit or ½ cup; wholeGrains — 1 slice whole-grain bread or ½ cup cooked whole grains (refined grains such as white rice or white bread don't count); legumes — ½ cup cooked beans, lentils, or chickpeas; nuts — 1 oz nuts or seeds, or 2 tbsp nut butter.`;
 }
 
 // ── Settings AI assistant ─────────────────────────────────────────────────────

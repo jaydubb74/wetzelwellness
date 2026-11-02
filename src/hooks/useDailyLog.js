@@ -74,6 +74,21 @@ export function useDailyLog(date) {
     update(prev => ({ ...prev, electrolytes: val }));
   }, [update]);
 
+  // ── Health-score inputs ─────────────────────────────────────────────────────
+
+  // Steps entered by hand (e.g. from Apple Watch); null goes back to Oura's
+  const setSteps = useCallback((steps) => {
+    update(prev => ({ ...prev, steps }));
+  }, [update]);
+
+  // The day's food-group servings set by hand; null goes back to meal estimates
+  const setFoodGroups = useCallback((foodGroups) => {
+    update(prev => {
+      const { foodGroups: _, ...rest } = prev;
+      return foodGroups ? { ...rest, foodGroups } : rest;
+    });
+  }, [update]);
+
   // ── Exercise helpers ────────────────────────────────────────────────────────
 
   const addExercise = useCallback((entry) => {
@@ -95,6 +110,8 @@ export function useDailyLog(date) {
     setElectrolytes,
     addExercise,
     removeExercise,
+    setSteps,
+    setFoodGroups,
   };
 }
 

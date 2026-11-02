@@ -1,4 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
+import NumberField from '../NumberField.jsx';
+import { HEALTH_SCORE_CONFIG, PLAN_OPTIONS, editPlan, upcomingPlanDays } from '../../utils/healthScore.js';
+import { offsetDate, today, formatShort } from '../../utils/dates.js';
 import { applySettingsIntent } from '../../services/llm.js';
 import * as sync from '../../services/sync.js';
 import * as oura from '../../services/oura.js';
@@ -18,40 +21,6 @@ function Section({ title, children }) {
       <h3 className="text-sm font-semibold text-slate-800 border-b border-slate-100 pb-3">{title}</h3>
       {children}
     </div>
-  );
-}
-
-// ── Number field ──────────────────────────────────────────────────────────────
-
-// Saves on blur/Enter rather than every keystroke, so a field can be cleared
-// and retyped (saving each keystroke snapped an empty field back to a default,
-// turning "10" into "810"). Out-of-range or empty input reverts.
-function NumberField({ value, onCommit, min = 0, max, ...props }) {
-  const [text, setText] = useState(String(value ?? ''));
-  useEffect(() => setText(String(value ?? '')), [value]);
-
-  function commit() {
-    const n = parseInt(text, 10);
-    if (Number.isFinite(n) && n >= min && (max == null || n <= max)) {
-      if (n !== value) onCommit(n);
-      setText(String(n));
-    } else {
-      setText(String(value ?? ''));
-    }
-  }
-
-  return (
-    <input
-      type="number"
-      inputMode="numeric"
-      min={min}
-      max={max}
-      value={text}
-      onChange={e => setText(e.target.value)}
-      onBlur={commit}
-      onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-      {...props}
-    />
   );
 }
 
@@ -192,10 +161,12 @@ function ExerciseGoals({ goals, onChange }) {
     { id: 'zone2',    icon: '🚴' },
     { id: 'hiit',     icon: '⚡' },
     { id: 'strength', icon: '🏋️' },
+    { id: 'stretch',  icon: '🧘' },
   ];
 
   return (
     <div className="space-y-3">
+      <p className="text-xs text-slate-500">Set a goal to 0 to stop tracking it.</p>
       {categories.map(cat => {
         const g = goals[cat.id];
         if (!g) return null;
@@ -211,8 +182,8 @@ function ExerciseGoals({ goals, onChange }) {
             />
             <div className="flex items-center gap-1.5 shrink-0">
               <NumberField
-                min={1}
-                max={7}
+                min={0}
+                max={14}
                 className="input text-sm w-16 text-center"
                 aria-label={`${g.label} sessions per week`}
                 value={g.target}
@@ -223,6 +194,155 @@ function ExerciseGoals({ goals, onChange }) {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+// ── Health score targets ──────────────────────────────────────────────────────
+
+// Blank means "not set": the matching part of the score shows as incomplete
+// rather than being scored against a made-up number.
+function HealthTargets({ settings, onUpdate }) {
+  const range = settings.calorieRange || {};
+  const groups = settings.foodGroupTargets || {};
+  return (
+    <div className="space-y-5">
+      <p className="text-xs text-slate-500">
+        Daily score = nutrition {HEALTH_SCORE_CONFIG.weights.nutrition}% · movement {HEALTH_SCORE_CONFIG.weights.movement}% ·
+        sleep {HEALTH_SCORE_CONFIG.weights.sleep}%. These are design weights for tracking consistency with your own
+        targets, not medical guidance. Leave a field blank and that part of the score shows as incomplete. Your protein
+        target is under Daily Macro Targets.
+      </p>
+
+      <div>
+        <p className="label">Calorie range (kcal / day)</p>
+        <div className="flex items-center gap-2">
+          <NumberField
+            allowEmpty
+            min={1}
+            className="input text-sm w-28"
+            aria-label="Minimum calories per day"
+            placeholder="Min"
+            value={range.min}
+            onCommit={n => onUpdate({ calorieRange: { ...range, min: n } })}
+          />
+          <span className="text-sm text-slate-500">to</span>
+          <NumberField
+            allowEmpty
+            min={1}
+            className="input text-sm w-28"
+            aria-label="Maximum calories per day"
+            placeholder="Max"
+            value={range.max}
+            onCommit={n => onUpdate({ calorieRange: { ...range, max: n } })}
+          />
+        </div>
+        <p className="text-xs text-slate-500 mt-1">Full points inside the range; fewer above it or below it.</p>
+      </div>
+
+      <div>
+        <label className="label" htmlFor="steps-target">Daily steps target</label>
+        <NumberField
+          id="steps-target"
+          allowEmpty
+          min={1}
+          className="input text-sm w-36"
+          placeholder="e.g. 10000"
+          value={settings.stepsTarget}
+          onCommit={n => onUpdate({ stepsTarget: n })}
+        />
+      </div>
+
+      <div>
+        <p className="label">Food groups (servings / day)</p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          {HEALTH_SCORE_CONFIG.foodGroups.map(g => (
+            <div key={g.key}>
+              <label className="block text-xs text-slate-600 mb-1" htmlFor={`fg-${g.key}`}>{g.label}</label>
+              <NumberField
+                id={`fg-${g.key}`}
+                allowEmpty
+                min={1}
+                max={20}
+                className="input text-sm"
+                placeholder="Not tracked"
+                value={groups[g.key]}
+                onCommit={n => onUpdate({ foodGroupTargets: { ...groups, [g.key]: n } })}
+              />
+            </div>
+          ))}
+        </div>
+        <p className="text-xs text-slate-500 mt-1">
+          Servings are estimated from your meals by Claude, and you can adjust them each day.
+        </p>
+      </div>
+
+      <WeeklyPlan settings={settings} onUpdate={onUpdate} />
+    </div>
+  );
+}
+
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+// Each weekday is planned sessions or a recovery day. Edits start tomorrow,
+// so a day's plan is always set before it begins.
+function WeeklyPlan({ settings, onUpdate }) {
+  const days = upcomingPlanDays(settings.planHistory);
+  const startsOn = formatShort(offsetDate(today(), 1));
+
+  function toggle(weekday, key) {
+    const current = days[weekday] || [];
+    let next;
+    if (key === 'recovery') next = current.includes('recovery') ? [] : ['recovery'];
+    else {
+      const withoutRecovery = current.filter(k => k !== 'recovery');
+      next = withoutRecovery.includes(key) ? withoutRecovery.filter(k => k !== key) : [...withoutRecovery, key];
+    }
+    onUpdate({ planHistory: editPlan(settings.planHistory, days.map((d, i) => (i === weekday ? next : d))) });
+  }
+
+  // Planned sessions per week vs the weekly goals
+  const counts = {};
+  for (const d of days) for (const k of d) counts[k] = (counts[k] || 0) + 1;
+  const goals = settings.exerciseGoals || {};
+  const summary = PLAN_OPTIONS.filter(o => o.key !== 'recovery' && (counts[o.key] || goals[o.key]?.target))
+    .map(o => `${o.label} ${counts[o.key] || 0}${goals[o.key]?.target ? `/${goals[o.key].target}` : ''}`);
+
+  return (
+    <div>
+      <p className="label">Weekly plan</p>
+      <p className="text-xs text-slate-500 mb-2">
+        Changes apply from tomorrow ({startsOn}), so each day is planned in advance. A planned recovery day earns full
+        plan points without a workout.
+      </p>
+      <div className="space-y-2">
+        {WEEKDAYS.map((name, i) => (
+          <div key={name} className="flex flex-wrap items-center gap-1.5">
+            <span className="text-sm text-slate-700 w-24 shrink-0">{name}</span>
+            {PLAN_OPTIONS.map(o => {
+              const on = (days[i] || []).includes(o.key);
+              return (
+                <button
+                  key={o.key}
+                  type="button"
+                  onClick={() => toggle(i, o.key)}
+                  aria-pressed={on}
+                  aria-label={`${name}: ${o.label}`}
+                  className={`text-xs px-2.5 py-1.5 rounded-full border font-medium transition-colors ${
+                    on ? 'bg-brand-700 text-white border-brand-700' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
+                  }`}
+                >
+                  {o.label}
+                </button>
+              );
+            })}
+            {!(days[i] || []).length && <span className="text-[11px] text-slate-500">Not planned</span>}
+          </div>
+        ))}
+      </div>
+      {summary.length > 0 && (
+        <p className="text-xs text-slate-600 mt-2">Planned per week vs goals: {summary.join(' · ')}</p>
+      )}
     </div>
   );
 }
@@ -516,6 +636,11 @@ export default function SettingsView({ settings, onUpdate, onReplace }) {
           supplements={settings.supplements}
           onChange={s => { onUpdate({ supplements: s }); markSaved(); }}
         />
+      </Section>
+
+      {/* Health score targets */}
+      <Section title="📊 Health Score Targets">
+        <HealthTargets settings={settings} onUpdate={patch => { onUpdate(patch); markSaved(); }} />
       </Section>
 
       {/* Exercise Goals */}

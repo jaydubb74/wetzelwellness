@@ -6,7 +6,7 @@
 
 import { today } from './dates.js';
 
-export const EXERCISE_GOALS = ['zone2', 'hiit', 'strength'];
+export const EXERCISE_GOALS = ['zone2', 'hiit', 'strength', 'stretch'];
 
 // Protein variance bands, by |actual − target| / target (over or under).
 const GREEN_MAX = 0.10;
@@ -73,6 +73,9 @@ export function snapshotTargets(settings) {
     supplements: (settings.supplements || [])
       .filter(s => s.active)
       .map(({ id, name }) => ({ id, name })),
+    calorieRange: { ...settings.calorieRange },
+    foodGroupTargets: { ...settings.foodGroupTargets },
+    stepsTarget: settings.stepsTarget ?? null,
   };
 }
 
@@ -83,7 +86,8 @@ export function snapshotTargets(settings) {
  */
 export function targetsFor(date, log, settings) {
   if (date >= today() || !log?.targets) return snapshotTargets(settings);
-  return log.targets;
+  // Goals added after a day was frozen fall back to current settings
+  return { ...snapshotTargets(settings), ...log.targets };
 }
 
 // ── Daily compliance ───────────────────────────────────────────────────────────
@@ -123,7 +127,7 @@ export function scoreDay(date, log, settings) {
  * workouts aren't used). The "Hit Movement Goal" entry counts toward HIIT.
  */
 export function sessionsForDay(log) {
-  const counts = { zone2: 0, hiit: 0, strength: 0 };
+  const counts = Object.fromEntries(EXERCISE_GOALS.map(k => [k, 0]));
   for (const ex of log?.exercises || []) {
     const cat = ex.category === 'movement' ? 'hiit' : ex.category;
     if (cat in counts) counts[cat]++;
@@ -141,8 +145,8 @@ export function sessionsForDay(log) {
  *   the range was logged by hand (nothing to judge).
  */
 export function exerciseForRange(dates, logs, settings) {
-  const counts = { zone2: 0, hiit: 0, strength: 0 };
-  const targets = { zone2: 0, hiit: 0, strength: 0 };
+  const counts = Object.fromEntries(EXERCISE_GOALS.map(k => [k, 0]));
+  const targets = Object.fromEntries(EXERCISE_GOALS.map(k => [k, 0]));
   for (const date of dates) {
     const log = logs[date];
     const goals = targetsFor(date, log, settings).exerciseGoals;

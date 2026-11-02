@@ -23,13 +23,13 @@ beforeEach(() => {
 afterEach(() => { globalThis.fetch = realFetch; });
 
 describe('fetchOuraDay', () => {
-  it('requests only sleep and readiness', async () => {
+  it('requests sleep, readiness, and daily activity (for steps) — no workouts', async () => {
     const requested = stubOura({});
     await fetchOuraDay('2026-11-01');
-    expect(requested.sort()).toEqual(['daily_readiness', 'daily_sleep', 'sleep']);
+    expect(requested.sort()).toEqual(['daily_activity', 'daily_readiness', 'daily_sleep', 'sleep']);
   });
 
-  it('maps sleep and readiness', async () => {
+  it('maps sleep, readiness, and steps', async () => {
     stubOura({
       daily_sleep: [{ score: 84 }],
       sleep: [
@@ -37,12 +37,13 @@ describe('fetchOuraDay', () => {
         { type: 'long_sleep', total_sleep_duration: 27000, deep_sleep_duration: 5400, rem_sleep_duration: 6300, lowest_heart_rate: 48, average_hrv: 61.4 },
       ],
       daily_readiness: [{ score: 77, temperature_deviation: -0.2 }],
+      daily_activity: [{ steps: 9120, score: 80, active_calories: 450 }],
     });
     const day = await fetchOuraDay('2026-11-01');
 
     expect(day.sleep).toMatchObject({ score: 84, totalSeconds: 27000, restingHeartRate: 48, averageHrv: 61.4 });
     expect(day.readiness).toEqual({ score: 77, temperatureDeviation: -0.2 });
-    expect(day).not.toHaveProperty('activity');
+    expect(day.activity).toEqual({ steps: 9120 }); // steps only
     expect(day).not.toHaveProperty('workouts');
     expect(day.errors).toBeUndefined();
   });

@@ -1,5 +1,6 @@
 import * as ouraService from '../../services/oura.js';
 import { ExerciseList } from './ExerciseLogger.jsx';
+import NumberField from '../NumberField.jsx';
 
 function hm(seconds) {
   if (seconds == null) return '–';
@@ -35,7 +36,35 @@ function tempDeviation(c) {
   return `${c > 0 ? '+' : c < 0 ? '−' : ''}${Math.abs(c).toFixed(1)} °C`;
 }
 
-function MovementCard({ exercises, onRemove }) {
+// Steps for the day: Oura's count, or a number entered by hand (e.g. from
+// Apple Watch), which takes priority. Clearing the entry goes back to Oura's.
+function StepsRow({ steps, ouraSteps, target, onSetSteps }) {
+  const shown = steps ?? ouraSteps;
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-baseline justify-between gap-2">
+        <p className="text-xs font-semibold text-amber-900">Steps</p>
+        <p className="text-xs text-slate-600 tabular-nums">
+          {shown != null ? shown.toLocaleString() : '–'}
+          {target ? ` / ${target.toLocaleString()}` : ''}
+          {shown != null && <span className="text-slate-500"> · {steps != null ? 'entered' : 'Oura'}</span>}
+        </p>
+      </div>
+      <NumberField
+        allowEmpty
+        min={0}
+        max={200000}
+        value={steps}
+        onCommit={onSetSteps}
+        placeholder={ouraSteps != null ? `Oura: ${ouraSteps.toLocaleString()} — enter to override` : 'Enter steps (e.g. from Apple Watch)'}
+        aria-label="Steps entered by hand"
+        className="input text-sm py-2"
+      />
+    </div>
+  );
+}
+
+function MovementCard({ exercises, onRemove, stepsRow }) {
   const goalEntries = exercises.filter(ex => ex.category === 'movement');
   const activities = exercises.filter(ex => ex.category !== 'movement');
   const goalCal = goalEntries.reduce((sum, ex) => sum + (ex.activeCalories || 0), 0);
@@ -43,6 +72,8 @@ function MovementCard({ exercises, onRemove }) {
   return (
     <div className="bg-amber-50/60 border border-amber-100 rounded-xl p-3 space-y-3">
       <p className="text-xs font-semibold text-amber-900">🔥 Movement</p>
+
+      {stepsRow}
 
       {/* Movement goal achievement */}
       {goalEntries.length > 0 ? (
@@ -68,17 +99,22 @@ function MovementCard({ exercises, onRemove }) {
  * Daily health cards for one day: Oura sleep + readiness, and movement
  * (goal and logged activities, entered by hand).
  */
-export default function HealthActivity({ oura, syncing, error, onRefresh, exercises = [], onRemoveExercise }) {
+export default function HealthActivity({
+  oura, syncing, error, onRefresh, exercises = [], onRemoveExercise, steps, stepsTarget, onSetSteps,
+}) {
   const configured = ouraService.isConnected();
+  const stepsRow = (
+    <StepsRow steps={steps} ouraSteps={oura?.activity?.steps ?? null} target={stepsTarget} onSetSteps={onSetSteps} />
+  );
 
   if (!configured && !oura) {
     return (
       <div className="space-y-3">
         <p className="text-xs text-slate-500 bg-slate-50 rounded-xl px-3 py-2.5">
           💍 Connect your Oura ring in <span className="font-medium">Settings</span> to
-          auto-fill sleep and readiness.
+          auto-fill sleep, readiness, and steps.
         </p>
-        <MovementCard exercises={exercises} onRemove={onRemoveExercise} />
+        <MovementCard exercises={exercises} onRemove={onRemoveExercise} stepsRow={stepsRow} />
       </div>
     );
   }
@@ -129,7 +165,7 @@ export default function HealthActivity({ oura, syncing, error, onRefresh, exerci
         </div>
       </div>
 
-      <MovementCard exercises={exercises} onRemove={onRemoveExercise} />
+      <MovementCard exercises={exercises} onRemove={onRemoveExercise} stepsRow={stepsRow} />
 
       <div className="flex items-center gap-2">
         <button

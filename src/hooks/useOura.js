@@ -3,6 +3,7 @@ import { getLocalDateKey, offsetDate } from '../utils/dates.js';
 import * as storage from '../services/storage.js';
 import * as oura from '../services/oura.js';
 import { emptyLog } from './useDailyLog.js';
+import { fetchedBeforeDayEnded } from '../utils/healthScore.js';
 
 // How many days back to recheck for sleep/readiness Oura hadn't finished
 // syncing yet at the time we first fetched that day (the ring can take a
@@ -13,25 +14,28 @@ function ouraIncomplete(o) {
   return !o || o.sleep == null || o.readiness == null;
 }
 
-// Stored before readiness was fetched (those copies carried activity/workouts)
+// Stored by an older version: before readiness was fetched, or during the
+// stretch when steps weren't
 function ouraOutdated(o) {
-  return Boolean(o) && !('readiness' in o);
+  return Boolean(o) && (!('readiness' in o) || !('activity' in o));
 }
+
 
 /**
  * One-time-per-session sweep of the last BACKFILL_DAYS days: re-fetches any
- * day whose sleep or readiness was still missing when it was last fetched, and applies
- * the result to THAT day's stored log (not today's), so a sync triggered
- * while viewing today still lands on the right date.
+ * day whose sleep or readiness was still missing, or whose steps were fetched
+ * before the day ended, and applies the result to THAT day's stored log (not
+ * today's), so a sync triggered while viewing today still lands on the right
+ * date. Missing sleep/readiness keeps it on the list for the next app open.
  */
 async function backfillRecentDays(todayKey) {
   for (let i = 1; i <= BACKFILL_DAYS; i++) {
     const d = offsetDate(todayKey, -i);
     const existing = storage.getDailyLog(d);
-    if (!ouraIncomplete(existing?.oura)) continue;
+    const o = existing?.oura;
+    if (!ouraIncomplete(o) && !ouraOutdated(o) && !fetchedBeforeDayEnded(o, d)) continue;
     try {
       const data = await oura.fetchOuraDay(d);
-      if (ouraIncomplete(data)) continue; // still not posted upstream — retry next session
       storage.saveDailyLog(d, { ...(existing || emptyLog(d)), oura: data });
     } catch {
       // best-effort — try again next app open
@@ -58,7 +62,8 @@ export function useOura(date, log, updateLog) {
     const isToday = date === getLocalDateKey();
     const existing = log?.oura;
     const fresh = existing && (Date.now() - (existing.fetchedAt || 0) < oura.TODAY_REFRESH_MS);
-    if (!force && existing && !ouraOutdated(existing) && (!isToday || fresh)) return;
+    const stalePast = !isToday && fetchedBeforeDayEnded(existing, date);
+    if (!force && existing && !ouraOutdated(existing) && !stalePast && (!isToday || fresh)) return;
 
     inFlight.current = true;
     setSyncing(true);

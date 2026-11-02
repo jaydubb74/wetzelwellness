@@ -24,8 +24,18 @@ const DEFAULT_SETTINGS = {
     zone2:    { target: 3, label: 'Zone 2 Cardio',    unit: 'sessions/wk' },
     hiit:     { target: 2, label: 'HIIT',             unit: 'sessions/wk' },
     strength: { target: 3, label: 'Strength Training', unit: 'sessions/wk' },
+    stretch:  { target: 3, label: 'Stretch',           unit: 'sessions/wk' },
   },
   waterTarget: 8,
+  // Health-consistency score targets. Blank (null) until set in Settings;
+  // the matching score component shows as incomplete until then.
+  calorieRange: { min: null, max: null },
+  foodGroupTargets: { vegetables: null, fruit: null, wholeGrains: null, legumes: null, nuts: null },
+  stepsTarget: null,
+  // Weekly plan versions: [{ from: 'YYYY-MM-DD', days: [7 lists, Sun–Sat] }].
+  // Each day lists planned exercise categories, or ['recovery']. Edits take
+  // effect the next day so a day's plan is always set in advance.
+  planHistory: [],
   apiKey: '',
   ouraToken: '',        // legacy Personal Access Token (deprecated by Oura)
   ouraClientId: '',
@@ -44,7 +54,14 @@ export const DEVICE_LOCAL_KEYS = ['apiKey', 'syncKey'];
 export const CREDENTIAL_KEYS = ['ouraToken', 'ouraClientId', 'ouraClientSecret', 'ouraAuth'];
 
 // The user's actual tracking preferences — update when adding a new one.
-const PREFERENCE_KEYS = ['macroTargets', 'supplements', 'exerciseGoals', 'waterTarget'];
+// (These are also what the settings assistant may read and change.)
+const PREFERENCE_KEYS = [
+  'macroTargets', 'supplements', 'exerciseGoals', 'waterTarget',
+  'calorieRange', 'foodGroupTargets', 'stepsTarget',
+];
+// The plan is dated history the assistant shouldn't rewrite, but it still
+// counts as "set up" when a new device decides whether to adopt shared settings.
+const SETUP_KEYS = [...PREFERENCE_KEYS, 'planHistory'];
 
 // Cross-device sync hooks — registered by services/sync.js so saves get
 // mirrored to KV without a circular import.
@@ -77,6 +94,27 @@ const SEED_CACHE = {
   'salmon 6oz':               { protein: 34, fat: 14, carbs: 0,  calories: 265 },
   'cottage cheese 1 cup':     { protein: 25, fat: 5,  carbs: 6,  calories: 180 },
 };
+
+// Food-group servings for seed items where they're unambiguous (animal foods
+// have none). Items left out, like avocado, carry no estimate.
+const NO_GROUPS = { vegetables: 0, fruit: 0, wholeGrains: 0, legumes: 0, nuts: 0 };
+const SEED_GROUPS = {
+  '1 egg': NO_GROUPS, '2 eggs': NO_GROUPS, '3 eggs': NO_GROUPS, '4 eggs': NO_GROUPS,
+  'chicken breast 4oz': NO_GROUPS, 'chicken breast 6oz': NO_GROUPS,
+  'ground beef 4oz 93% lean': NO_GROUPS, 'greek yogurt': NO_GROUPS,
+  'protein shake': NO_GROUPS, 'salmon 6oz': NO_GROUPS, 'cottage cheese 1 cup': NO_GROUPS,
+  'white rice 1 cup cooked': NO_GROUPS,
+  'oatmeal 1 cup cooked':    { ...NO_GROUPS, wholeGrains: 2 },
+  'brown rice 1 cup cooked': { ...NO_GROUPS, wholeGrains: 2 },
+  'banana':                  { ...NO_GROUPS, fruit: 1 },
+  'apple':                   { ...NO_GROUPS, fruit: 1 },
+  'spinach 1 cup':           { ...NO_GROUPS, vegetables: 1 },
+  'sweet potato medium':     { ...NO_GROUPS, vegetables: 1 },
+  'almonds 1oz':             { ...NO_GROUPS, nuts: 1 },
+};
+for (const [item, groups] of Object.entries(SEED_GROUPS)) {
+  SEED_CACHE[item] = { ...SEED_CACHE[item], groups };
+}
 
 // ── Daily logs ────────────────────────────────────────────────────────────────
 
@@ -171,7 +209,7 @@ export function pickPreferences(obj) {
 
 /** True when tracking preferences are still the built-in defaults. */
 export function hasDefaultPreferences(settings) {
-  return PREFERENCE_KEYS.every(k => deepEqual(settings[k], DEFAULT_SETTINGS[k]));
+  return SETUP_KEYS.every(k => deepEqual(settings[k], DEFAULT_SETTINGS[k]));
 }
 
 // ── Sync bookkeeping ──────────────────────────────────────────────────────────
@@ -261,14 +299,14 @@ export function getSavedMeals() {
  * Silently skips exact-duplicate descriptions (case-insensitive).
  * Returns the updated array.
  */
-export function saveFavoriteMeal({ description, macros }) {
+export function saveFavoriteMeal({ description, macros, groups }) {
   const meals = getSavedMeals();
   const dupe = meals.some(
     m => m.description.toLowerCase() === description.toLowerCase()
   );
   if (dupe) return meals;
   const updated = [
-    { id: 'fav_' + Date.now(), description, macros },
+    { id: 'fav_' + Date.now(), description, macros, ...(groups ? { groups } : {}) },
     ...meals,
   ];
   localStorage.setItem(KEY.SAVED_MEALS, JSON.stringify(updated));

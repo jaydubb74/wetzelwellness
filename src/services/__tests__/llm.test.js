@@ -55,3 +55,25 @@ describe('saveMealCorrection', () => {
     expect((await parseMealMacros('2 eggs')).protein).toBe(14);
   });
 });
+
+describe('meal food-group estimates', () => {
+  function stubModel(reply) {
+    const store = new Map();
+    globalThis.localStorage = { getItem: k => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) };
+    globalThis.fetch = async () => new Response(JSON.stringify({ content: [{ type: 'text', text: JSON.stringify(reply) }] }));
+  }
+  const macros = { protein: 30, fat: 12, carbs: 45, calories: 420 };
+
+  it('keeps servings per group, rounded to the nearest half', async () => {
+    stubModel({ ...macros, groups: { vegetables: 1.3, fruit: 0, wholeGrains: 2, legumes: 0.5, nuts: 0 } });
+    const result = await parseMealMacros('salmon grain bowl');
+    expect(result.groups).toEqual({ vegetables: 1.5, fruit: 0, wholeGrains: 2, legumes: 0.5, nuts: 0 });
+  });
+
+  it('drops an unusable estimate rather than treating it as zero servings', async () => {
+    stubModel({ ...macros, groups: { vegetables: -1 } });
+    expect((await parseMealMacros('mystery plate')).groups).toBeUndefined();
+    stubModel(macros);
+    expect((await parseMealMacros('another plate')).groups).toBeUndefined();
+  });
+});

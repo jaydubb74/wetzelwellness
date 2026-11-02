@@ -8,6 +8,7 @@ import {
   getMonthDates,
   getPastDays,
   offsetMonth,
+  getQuarterDates, offsetQuarter, quarterLabel,
 } from '../dates.js';
 
 describe('offsetMonth', () => {
@@ -314,5 +315,27 @@ describe('date rollover scenarios', () => {
     expect(getLocalDateKey(localJan1Midnight)).toBe('2026-01-01');
     // The old toISOString() approach would fail for UTC+1 and above because
     // local midnight Jan 1 in UTC+1 = UTC Dec 31 23:00, so toISOString() → '2025-12-31'
+  });
+});
+
+describe('calendar quarters', () => {
+  it('covers Oct–Dec for a November date', () => {
+    const dates = getQuarterDates('2026-11-15');
+    expect(dates[0]).toBe('2026-10-01');
+    expect(dates[dates.length - 1]).toBe('2026-12-31');
+    expect(dates).toHaveLength(92);
+  });
+
+  it('covers Jan–Mar including a leap day', () => {
+    const dates = getQuarterDates('2028-02-10');
+    expect(dates[0]).toBe('2028-01-01');
+    expect(dates).toContain('2028-02-29');
+    expect(dates[dates.length - 1]).toBe('2028-03-31');
+  });
+
+  it('steps between quarters across a year boundary', () => {
+    expect(quarterLabel(offsetQuarter('2026-11-15', 1))).toBe('Q1 2027');
+    expect(quarterLabel(offsetQuarter('2026-01-31', -1))).toBe('Q4 2025');
+    expect(quarterLabel('2026-07-01')).toBe('Q3 2026');
   });
 });

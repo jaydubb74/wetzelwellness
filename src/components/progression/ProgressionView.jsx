@@ -1,8 +1,9 @@
 import { useState, useMemo } from 'react';
-import { today, getWeekDates, getMonthDates, offsetDate, offsetMonth, weekLabel, monthLabel, formatShort, formatFull } from '../../utils/dates.js';
+import { today, getWeekDates, getMonthDates, getQuarterDates, offsetDate, offsetMonth, offsetQuarter, weekLabel, monthLabel, quarterLabel, formatShort, formatFull } from '../../utils/dates.js';
 import { useCompliance } from '../../hooks/useCompliance.js';
 import * as storage from '../../services/storage.js';
 import { EXERCISE_GOALS, formatVariance, scorePeriod } from '../../utils/scoring.js';
+import { averageHealth } from '../../utils/healthScore.js';
 
 const BAND_TEXT = { green: 'text-brand-600', yellow: 'text-amber-600', red: 'text-red-500' };
 
@@ -114,6 +115,7 @@ function ExerciseProgress({ goals, exercise }) {
     { id: 'zone2',    icon: '🚴', label: 'Zone 2' },
     { id: 'hiit',     icon: '⚡', label: 'HIIT' },
     { id: 'strength', icon: '🏋️', label: 'Strength' },
+    { id: 'stretch',  icon: '🧘', label: 'Stretch' },
   ];
 
   return (
@@ -260,38 +262,75 @@ function downloadWeekReport(anchor, settings) {
   URL.revokeObjectURL(url);
 }
 
+// Average health-consistency score and pillars over the period (finalized
+// days only — today is left out until it's over).
+function HealthPeriodCard({ averages, periodLabel }) {
+  const rows = [
+    { key: 'score', label: 'Score' },
+    { key: 'nutrition', label: 'Nutrition' },
+    { key: 'movement', label: 'Movement' },
+    { key: 'sleep', label: 'Sleep' },
+  ];
+  return (
+    <div className="card">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-semibold text-slate-800">Health consistency</h3>
+        <span className="text-xs text-slate-500">{periodLabel}</span>
+      </div>
+      <div className="grid grid-cols-4 gap-2">
+        {rows.map(({ key, label }) => (
+          <div key={key} className="min-w-0">
+            <p className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide truncate">{label}</p>
+            <p className="text-lg font-semibold text-slate-900 tabular-nums">
+              {averages[key].average == null ? '—' : averages[key].average.toFixed(1)}
+            </p>
+            <p className="text-[11px] text-slate-500">{averages[key].days} of {averages[key].of} days</p>
+          </div>
+        ))}
+      </div>
+      <p className="text-[11px] text-slate-500 mt-2">Averages of finalized days only; days still in progress or missing data aren't counted.</p>
+    </div>
+  );
+}
+
+const PERIODS = {
+  week:    { dates: getWeekDates,    step: (a, n) => offsetDate(a, 7 * n), label: weekLabel,    exercise: "Week's Exercise" },
+  month:   { dates: getMonthDates,   step: offsetMonth,                    label: monthLabel,   exercise: "Month's Exercise" },
+  quarter: { dates: getQuarterDates, step: offsetQuarter,                  label: quarterLabel, exercise: "Quarter's Exercise" },
+};
+
 export default function ProgressionView({ settings, onNavigateToDate }) {
-  const [period, setPeriod] = useState('week'); // 'week' | 'month'
+  const [period, setPeriod] = useState('week'); // 'week' | 'month' | 'quarter' (calendar)
   const [anchor, setAnchor] = useState(today());
   const [selectedDate, setSelectedDate] = useState(today());
 
-  const dates = useMemo(() => {
-    return period === 'week' ? getWeekDates(anchor) : getMonthDates(anchor);
-  }, [period, anchor]);
+  const dates = useMemo(() => PERIODS[period].dates(anchor), [period, anchor]);
+  const healthAverages = useMemo(() => averageHealth(dates, storage.getAllLogs(), settings), [dates, settings]);
 
   const { daily, summary, met, exercise, tracked } = useCompliance(dates, settings);
   // What the day-based percentages count: days that hit the goal, out of days logged
   const days = n => `${n} of ${tracked} logged day${tracked === 1 ? '' : 's'}`;
 
-  const periodLabel = period === 'week' ? weekLabel(anchor) : monthLabel(anchor);
+  const periodLabel = PERIODS[period].label(anchor);
 
   function prev() {
-    setAnchor(a => period === 'week' ? offsetDate(a, -7) : offsetMonth(a, -1));
+    setAnchor(a => PERIODS[period].step(a, -1));
   }
   function next() {
-    setAnchor(a => period === 'week' ? offsetDate(a, 7) : offsetMonth(a, 1));
+    setAnchor(a => PERIODS[period].step(a, 1));
   }
 
   return (
     <div className="space-y-4">
       {/* Period controls */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex bg-white border border-slate-200 rounded-xl overflow-hidden text-sm">
-          {['week', 'month'].map(p => (
+          {Object.keys(PERIODS).map(p => (
             <button
               key={p}
               onClick={() => { setPeriod(p); setAnchor(today()); }}
-              className={`px-4 py-2 font-medium capitalize transition-colors ${
+              aria-pressed={period === p}
+              className={`px-3 py-2 font-medium capitalize transition-colors ${
                 period === p ? 'bg-brand-700 text-white' : 'text-slate-600 hover:bg-slate-50'
               }`}
             >
@@ -307,10 +346,12 @@ export default function ProgressionView({ settings, onNavigateToDate }) {
         </div>
       </div>
 
-      {/* Compliance cards */}
+      <HealthPeriodCard averages={healthAverages} periodLabel={periodLabel} />
+
+      {/* Daily habit compliance */}
       <div className="grid grid-cols-2 gap-3">
         <ComplianceCard
-          label="Nutrition"
+          label="Protein"
           icon="🥗"
           pct={summary.nutrition}
           detail={days(met.nutrition)}
@@ -420,7 +461,7 @@ export default function ProgressionView({ settings, onNavigateToDate }) {
       {/* Exercise progress for viewed period */}
       <div className="card">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-slate-800">{period === 'week' ? "This Week's Exercise" : "Month Exercise"}</h3>
+          <h3 className="text-sm font-semibold text-slate-800">{PERIODS[period].exercise}</h3>
           <span className="text-xs text-slate-500">{periodLabel}</span>
         </div>
         <ExerciseProgress goals={settings.exerciseGoals} exercise={exercise} />

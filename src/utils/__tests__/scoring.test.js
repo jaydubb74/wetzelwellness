@@ -96,11 +96,11 @@ describe('sessionsForDay', () => {
       exercises: [{ category: 'strength' }, { category: 'zone2' }],
       oura: { workouts: [{ category: 'strength' }, { category: 'zone2' }] },
     };
-    expect(sessionsForDay(log)).toEqual({ zone2: 1, hiit: 0, strength: 1 });
+    expect(sessionsForDay(log)).toEqual({ zone2: 1, hiit: 0, strength: 1, stretch: 0 });
   });
 
   it('counts the movement goal toward HIIT', () => {
-    expect(sessionsForDay({ exercises: [{ category: 'movement' }] })).toEqual({ zone2: 0, hiit: 1, strength: 0 });
+    expect(sessionsForDay({ exercises: [{ category: 'movement' }] })).toEqual({ zone2: 0, hiit: 1, strength: 0, stretch: 0 });
   });
 });
 
@@ -109,7 +109,7 @@ describe('exerciseForRange', () => {
     const dates = getWeekDates('2026-11-15');
     const logs = { [dates[1]]: { exercises: [{ category: 'strength' }] } };
     const { counts, targets, score } = exerciseForRange(dates, logs, settings);
-    expect(targets).toEqual({ zone2: 3, hiit: 2, strength: 3 });
+    expect(targets).toEqual({ zone2: 3, hiit: 2, strength: 3, stretch: 0 }); // no stretch goal in these settings
     expect(counts.strength).toBe(1);
     expect(score).toBe(Math.round((0 + 0 + 1 / 3) / 3 * 100));
   });

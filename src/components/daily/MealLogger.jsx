@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { parseMealMacros, saveMealCorrection } from '../../services/llm.js';
+import { parseMealMacros, saveMealCorrection, FOOD_GROUP_KEYS } from '../../services/llm.js';
 import * as storage from '../../services/storage.js';
 import { useSavedMeals } from '../../hooks/useSavedMeals.js';
 
@@ -10,6 +10,17 @@ const MACRO_FIELDS = [
   { key: 'calories', label: 'Calories', unit: 'kcal' },
 ];
 const PORTIONS = [0.5, 1, 1.5, 2];
+const GROUP_LABELS = { vegetables: 'Vegetables', fruit: 'Fruit', wholeGrains: 'Whole grains', legumes: 'Legumes', nuts: 'Nuts' };
+
+function scaleGroups(groups, multiplier) {
+  return Object.fromEntries(FOOD_GROUP_KEYS.map(k => [k, Math.round((groups[k] || 0) * multiplier * 2) / 2]));
+}
+
+// "Vegetables 1 · Whole grains 2", or "none" when every group is zero
+function describeGroups(groups) {
+  const parts = FOOD_GROUP_KEYS.filter(k => groups[k] > 0).map(k => `${GROUP_LABELS[k]} ${groups[k]}`);
+  return parts.length ? parts.join(' · ') : 'none';
+}
 
 function toMacros(values, multiplier = 1) {
   return Object.fromEntries(MACRO_FIELDS.map(({ key }) => {
@@ -48,7 +59,7 @@ function MacroInputs({ values, onChange }) {
 export default function MealLogger({ timeBlock, meals, onAdd, onRemove, onUpdate }) {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  // { description, original: macros, fromCache, breakdown } while confirming
+  // { description, original: macros, groups, fromCache, breakdown } while confirming
   const [pending, setPending] = useState(null);
   const [edits, setEdits] = useState({});    // macro field → string, editable
   const [portion, setPortion] = useState(1);
@@ -87,7 +98,7 @@ export default function MealLogger({ timeBlock, meals, onAdd, onRemove, onUpdate
     try {
       const result = await parseMealMacros(desc);
       const original = toMacros(result);
-      setPending({ description: desc, original, fromCache: result.fromCache, breakdown: result.breakdown || [] });
+      setPending({ description: desc, original, groups: result.groups || null, fromCache: result.fromCache, breakdown: result.breakdown || [] });
       setEdits(Object.fromEntries(MACRO_FIELDS.map(({ key }) => [key, String(original[key])])));
       setPortion(1);
     } catch (e) {
@@ -104,11 +115,14 @@ export default function MealLogger({ timeBlock, meals, onAdd, onRemove, onUpdate
     const perServing = toMacros(edits);
     // Remember hand corrections (per serving) for next time this is typed
     if (MACRO_FIELDS.some(({ key }) => perServing[key] !== pending.original[key])) {
-      saveMealCorrection(pending.description, perServing);
+      saveMealCorrection(pending.description, perServing, pending.groups || undefined);
     }
     return {
       description: portion === 1 ? pending.description : `${pending.description} (×${portion})`,
       macros: toMacros(perServing, portion),
+      // Meals without an estimate leave `groups` off, so the day's food
+      // quality shows as incomplete rather than assuming zero servings
+      ...(pending.groups ? { groups: scaleGroups(pending.groups, portion) } : {}),
     };
   }
 
@@ -143,7 +157,7 @@ export default function MealLogger({ timeBlock, meals, onAdd, onRemove, onUpdate
   // ── Quick-add from saved meals ───────────────────────────────────────────────
 
   function handleQuickAdd(fav) {
-    onAdd({ timeBlock, description: fav.description, macros: fav.macros });
+    onAdd({ timeBlock, description: fav.description, macros: fav.macros, ...(fav.groups ? { groups: fav.groups } : {}) });
     setInput('');
     setDropdownOpen(false);
   }
@@ -273,6 +287,11 @@ export default function MealLogger({ timeBlock, meals, onAdd, onRemove, onUpdate
 
           <p className="text-xs font-semibold text-brand-700">
             Total: {shown.protein}g P · {shown.fat}g F · {shown.carbs}g C · {shown.calories} kcal
+          </p>
+          <p className="text-xs text-slate-600">
+            {pending.groups
+              ? <>Food groups (estimate): {describeGroups(scaleGroups(pending.groups, portion))}</>
+              : <>No food-group estimate for this one — you can set servings for the day below.</>}
           </p>
 
           <div className="flex flex-wrap gap-2">

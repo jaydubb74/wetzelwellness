@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { getLocalDateKey, isToday, formatDisplay, offsetDate, getWeekDates } from '../../utils/dates.js';
 import { exerciseForRange, targetsFor } from '../../utils/scoring.js';
+import { scoreHealthDay, averageHealth, lastSevenDays } from '../../utils/healthScore.js';
 import { useDailyLog } from '../../hooks/useDailyLog.js';
 import * as storage from '../../services/storage.js';
 import MacroSummary from './MacroSummary.jsx';
@@ -8,7 +9,8 @@ import MealLogger from './MealLogger.jsx';
 import SupplementChecklist from './SupplementChecklist.jsx';
 import ExerciseLogger from './ExerciseLogger.jsx';
 import HealthActivity from './HealthActivity.jsx';
-import TodaySummary from './TodaySummary.jsx';
+import HealthScoreCard from './HealthScoreCard.jsx';
+import FoodGroupsCard from './FoodGroupsCard.jsx';
 import TimeBlock, { BlockSection, BLOCK_ORDER, currentBlock } from './TimeBlock.jsx';
 import { useOura } from '../../hooks/useOura.js';
 
@@ -85,6 +87,7 @@ export default function DailyView({ settings, jumpDate, onJumpConsumed }) {
     toggleSupplement,
     setWater, setElectrolytes,
     addExercise, removeExercise,
+    setSteps, setFoodGroups,
   } = useDailyLog(selectedDate);
 
   // Oura data for the selected day (auto-fetches into log.oura)
@@ -112,6 +115,13 @@ export default function DailyView({ settings, jumpDate, onJumpConsumed }) {
 
   // The goals this day is scored against (frozen for past days)
   const dayTargets = targetsFor(selectedDate, log, settings);
+
+  // Health-consistency score for the day, and the seven days before it
+  const healthDay = useMemo(() => scoreHealthDay(selectedDate, log, settings), [selectedDate, log, settings]);
+  const healthWeek = useMemo(
+    () => averageHealth(lastSevenDays(selectedDate), storage.getAllLogs(), settings),
+    [selectedDate, log, settings]
+  );
 
   // On today, blocks that have already passed start collapsed to a one-line
   // summary and the current/upcoming ones start open; past days start fully
@@ -162,17 +172,13 @@ export default function DailyView({ settings, jumpDate, onJumpConsumed }) {
         </button>
       </div>
 
-      {/* At-a-glance status */}
-      <TodaySummary
-        log={log}
-        targets={dayTargets}
-        final={selectedDate < todayKey}
-        weekExercise={weekExercise}
-        oura={oura}
-      />
+      {/* Health-consistency score */}
+      <HealthScoreCard day={healthDay} sevenDay={healthWeek} />
 
       {/* Macro summary */}
       <MacroSummary meals={log.meals || []} targets={dayTargets.macroTargets} final={selectedDate < todayKey} />
+
+      <FoodGroupsCard log={log} targets={dayTargets} onSetFoodGroups={setFoodGroups} />
 
       {/* ── Morning ──────────────────────────────────────────────────────── */}
       <TimeBlock key={blockKey('morning')} id="morning" defaultOpen={startsOpen('morning')} summary={blockSummary('morning')}>
@@ -285,6 +291,9 @@ export default function DailyView({ settings, jumpDate, onJumpConsumed }) {
           onRefresh={refreshOura}
           exercises={log.exercises || []}
           onRemoveExercise={removeExercise}
+          steps={log.steps ?? null}
+          stepsTarget={dayTargets.stepsTarget}
+          onSetSteps={setSteps}
         />
         <ExerciseLogger
           weekCounts={weekExercise.counts}

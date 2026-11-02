@@ -147,9 +147,9 @@ export async function testOuraConnection() {
 }
 
 /**
- * Fetches sleep and readiness for one date and returns the summary object
- * stored as `log.oura`. (Activity and workouts aren't used — Oura's workout
- * data proved unreliable — so they're not requested.)
+ * Fetches sleep, readiness, and the day's step count for one date and
+ * returns the summary object stored as `log.oura`. (Workouts aren't used —
+ * Oura's workout data proved unreliable — so they're not requested.)
  *
  * Each endpoint is fetched independently (Promise.allSettled) so that one
  * failing call — e.g. a transient 500, or a scope Oura rejects — doesn't
@@ -157,22 +157,25 @@ export async function testOuraConnection() {
  * instead of being swallowed into an indistinguishable "no data yet".
  */
 export async function fetchOuraDay(date) {
-  const [dailySleepRes, sleepSessionsRes, readinessRes] = await Promise.allSettled([
+  const [dailySleepRes, sleepSessionsRes, readinessRes, activityRes] = await Promise.allSettled([
     ouraGet('daily_sleep', date),
     // Oura's `sleep` endpoint dates a period by its bedtime_start's calendar
     // day, one day before the wake-day `daily_sleep` score it belongs to —
     // so a same-day query alone can miss last night's session entirely.
     ouraGet('sleep', offsetDate(date, -1), date),
     ouraGet('daily_readiness', date),
+    ouraGet('daily_activity', date),
   ]);
 
   const dailySleep = dailySleepRes.status === 'fulfilled' ? dailySleepRes.value : [];
   const sleepSessions = sleepSessionsRes.status === 'fulfilled' ? sleepSessionsRes.value : [];
   const dailyReadiness = readinessRes.status === 'fulfilled' ? readinessRes.value : [];
+  const dailyActivity = activityRes.status === 'fulfilled' ? activityRes.value : [];
 
   const errors = {};
   if (dailySleepRes.status === 'rejected') errors.sleep = dailySleepRes.reason.message;
   if (readinessRes.status === 'rejected') errors.readiness = readinessRes.reason.message;
+  if (activityRes.status === 'rejected') errors.activity = activityRes.reason.message;
 
   // Longest long_sleep session in the window is the one the daily score covers.
   const mainSleep = sleepSessions
@@ -199,9 +202,13 @@ export async function fetchOuraDay(date) {
       }
     : null;
 
+  // Steps only; a day still in progress keeps counting until it's refetched
+  const activity = dailyActivity[0] ? { steps: dailyActivity[0].steps ?? null } : null;
+
   return {
     sleep,
     readiness,
+    activity,
     fetchedAt: Date.now(),
     errors: Object.keys(errors).length ? errors : undefined,
   };
