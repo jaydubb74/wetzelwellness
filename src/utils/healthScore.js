@@ -22,7 +22,7 @@
 // onto the others.
 
 import { today, offsetDate } from './dates.js';
-import { macroTotals, targetsFor, sessionsForDay } from './scoring.js';
+import { macroTotals, targetsFor, sessionsForDay, exerciseCategory } from './scoring.js';
 
 export const HEALTH_SCORE_CONFIG = {
   // Percent weights; each set sums to 100
@@ -59,7 +59,6 @@ export const PLAN_OPTIONS = [
   { key: 'strength', label: 'Strength' },
   { key: 'zone2',    label: 'Zone 2' },
   { key: 'stretch',  label: 'Stretch' },
-  { key: 'hiit',     label: 'HIIT' },
   { key: 'recovery', label: 'Recovery' },
 ];
 
@@ -129,6 +128,8 @@ export function fetchedBeforeDayEnded(oura, date) {
 
 // ── Weekly plan ────────────────────────────────────────────────────────────────
 
+const currentCategories = day => [...new Set(day.map(exerciseCategory))];
+
 /**
  * The plan in force on `date`: a list of exercise categories, ['recovery'],
  * [] for a day left unplanned, or null when no plan existed yet.
@@ -139,13 +140,13 @@ export function planFor(date, planHistory = []) {
     .reduce((latest, v) => (!latest || v.from > latest.from ? v : latest), null);
   if (!version) return null;
   const weekday = new Date(date + 'T00:00:00').getDay();
-  return version.days?.[weekday] || [];
+  return currentCategories(version.days?.[weekday] || []);
 }
 
 /** The latest plan version's days (what the Settings editor shows). */
 export function upcomingPlanDays(planHistory = []) {
   const latest = planHistory.reduce((l, v) => (!l || v.from > l.from ? v : l), null);
-  return latest?.days || Array.from({ length: 7 }, () => []);
+  return latest?.days?.map(currentCategories) || Array.from({ length: 7 }, () => []);
 }
 
 /**

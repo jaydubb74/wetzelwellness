@@ -113,7 +113,6 @@ function CalendarGrid({ dates, daily, onSelect, selectedDate }) {
 function ExerciseProgress({ goals, exercise }) {
   const categories = [
     { id: 'zone2',    icon: '🚴', label: 'Zone 2' },
-    { id: 'hiit',     icon: '⚡', label: 'HIIT' },
     { id: 'strength', icon: '🏋️', label: 'Strength' },
     { id: 'stretch',  icon: '🧘', label: 'Stretch' },
   ];

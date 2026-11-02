@@ -10,7 +10,7 @@ const settings = {
   waterTarget: 8,
   exerciseGoals: {
     zone2:    { target: 3, label: 'Zone 2 Cardio' },
-    hiit:     { target: 2, label: 'HIIT' },
+    hiit:     { target: 2, label: 'HIIT' }, // retired goal still in older saved settings
     strength: { target: 3, label: 'Strength Training' },
   },
   supplements: [
@@ -96,11 +96,12 @@ describe('sessionsForDay', () => {
       exercises: [{ category: 'strength' }, { category: 'zone2' }],
       oura: { workouts: [{ category: 'strength' }, { category: 'zone2' }] },
     };
-    expect(sessionsForDay(log)).toEqual({ zone2: 1, hiit: 0, strength: 1, stretch: 0 });
+    expect(sessionsForDay(log)).toEqual({ zone2: 1, strength: 1, stretch: 0 });
   });
 
-  it('counts the movement goal toward HIIT', () => {
-    expect(sessionsForDay({ exercises: [{ category: 'movement' }] })).toEqual({ zone2: 0, hiit: 1, strength: 0, stretch: 0 });
+  it('counts older HIIT entries as Zone 2, and the movement goal toward nothing', () => {
+    const log = { exercises: [{ category: 'hiit' }, { category: 'movement' }] };
+    expect(sessionsForDay(log)).toEqual({ zone2: 1, strength: 0, stretch: 0 });
   });
 });
 
@@ -109,9 +110,9 @@ describe('exerciseForRange', () => {
     const dates = getWeekDates('2026-11-15');
     const logs = { [dates[1]]: { exercises: [{ category: 'strength' }] } };
     const { counts, targets, score } = exerciseForRange(dates, logs, settings);
-    expect(targets).toEqual({ zone2: 3, hiit: 2, strength: 3, stretch: 0 }); // no stretch goal in these settings
+    expect(targets).toEqual({ zone2: 3, strength: 3, stretch: 0 }); // no stretch goal; the HIIT goal is ignored
     expect(counts.strength).toBe(1);
-    expect(score).toBe(Math.round((0 + 0 + 1 / 3) / 3 * 100));
+    expect(score).toBe(Math.round((0 + 1 / 3) / 2 * 100));
   });
 
   it('scales targets to the length of a month instead of using weekly ones', () => {
@@ -123,8 +124,8 @@ describe('exerciseForRange', () => {
     }
     const { targets, score } = exerciseForRange(dates, logs, settings);
     expect(targets.strength).toBeCloseTo(12.86, 2);
-    // 4 of ~12.9 strength sessions is far from "all targets met"
-    expect(score).toBeLessThan(15);
+    // 4 of ~12.9 strength sessions and no Zone 2 is far from "all targets met"
+    expect(score).toBe(Math.round((4 / 12.86 + 0) / 2 * 100));
   });
 
   it('is null when nothing was logged by hand', () => {

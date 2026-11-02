@@ -156,6 +156,12 @@ describe('weekly plan and recovery days', () => {
     expect(day.pillars.movement.components.find(c => c.key === 'adherence').points).toBe(50);
   });
 
+  it('treats a planned HIIT day from an older plan as Zone 2', () => {
+    const history = [{ from: '2026-11-01', days: Array.from({ length: 7 }, () => ['hiit', 'zone2']) }];
+    expect(planFor('2026-11-11', history)).toEqual(['zone2']);
+    expect(upcomingPlanDays(history)[0]).toEqual(['zone2']);
+  });
+
   it('applies plan edits from tomorrow, so a day is planned in advance', () => {
     const allRecovery = Array.from({ length: 7 }, () => ['recovery']);
     const history = editPlan(settings.planHistory, allRecovery, '2026-11-15');

@@ -1,9 +1,8 @@
 import { useState } from 'react';
-import { EXERCISE_GOALS } from '../../utils/scoring.js';
+import { EXERCISE_GOALS, exerciseCategory } from '../../utils/scoring.js';
 
 const CATEGORIES = [
   { id: 'zone2',    label: 'Zone 2 Cardio', color: 'text-sky-600 bg-sky-50',      icon: '🚴' },
-  { id: 'hiit',     label: 'HIIT',          color: 'text-rose-600 bg-rose-50',     icon: '⚡' },
   { id: 'strength', label: 'Strength',      color: 'text-violet-600 bg-violet-50', icon: '🏋️' },
   { id: 'stretch',  label: 'Stretch',       color: 'text-teal-900 bg-teal-50',     icon: '🧘' },
   { id: 'movement', label: 'Movement',      color: 'text-amber-600 bg-amber-50',   icon: '🔥' },
@@ -11,7 +10,7 @@ const CATEGORIES = [
 ];
 
 function categoryMeta(id) {
-  return CATEGORIES.find(c => c.id === id) || CATEGORIES.find(c => c.id === 'other');
+  return CATEGORIES.find(c => c.id === exerciseCategory(id)) || CATEGORIES.find(c => c.id === 'other');
 }
 
 export function ExerciseList({ exercises, onRemove }) {

@@ -22,7 +22,6 @@ const DEFAULT_SETTINGS = {
   ],
   exerciseGoals: {
     zone2:    { target: 3, label: 'Zone 2 Cardio',    unit: 'sessions/wk' },
-    hiit:     { target: 2, label: 'HIIT',             unit: 'sessions/wk' },
     strength: { target: 3, label: 'Strength Training', unit: 'sessions/wk' },
     stretch:  { target: 3, label: 'Stretch',           unit: 'sessions/wk' },
   },

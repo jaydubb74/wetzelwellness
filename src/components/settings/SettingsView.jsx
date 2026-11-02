@@ -159,7 +159,6 @@ function SupplementManager({ supplements, onChange }) {
 function ExerciseGoals({ goals, onChange }) {
   const categories = [
     { id: 'zone2',    icon: '🚴' },
-    { id: 'hiit',     icon: '⚡' },
     { id: 'strength', icon: '🏋️' },
     { id: 'stretch',  icon: '🧘' },
   ];

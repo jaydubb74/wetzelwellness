@@ -6,7 +6,10 @@
 
 import { today } from './dates.js';
 
-export const EXERCISE_GOALS = ['zone2', 'hiit', 'strength', 'stretch'];
+export const EXERCISE_GOALS = ['zone2', 'strength', 'stretch'];
+
+/** HIIT was folded into Zone 2; older entries and plans still say 'hiit'. */
+export const exerciseCategory = cat => (cat === 'hiit' ? 'zone2' : cat);
 
 // Protein variance bands, by |actual − target| / target (over or under).
 const GREEN_MAX = 0.10;
@@ -124,12 +127,13 @@ export function scoreDay(date, log, settings) {
 
 /**
  * Sessions per goal for one day, from hand-logged exercise only (Oura
- * workouts aren't used). The "Hit Movement Goal" entry counts toward HIIT.
+ * workouts aren't used). The "Hit Movement Goal" entry doesn't count toward
+ * a goal; everyday movement is scored from steps.
  */
 export function sessionsForDay(log) {
   const counts = Object.fromEntries(EXERCISE_GOALS.map(k => [k, 0]));
   for (const ex of log?.exercises || []) {
-    const cat = ex.category === 'movement' ? 'hiit' : ex.category;
+    const cat = exerciseCategory(ex.category);
     if (cat in counts) counts[cat]++;
   }
   return counts;
